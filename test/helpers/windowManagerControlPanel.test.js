@@ -107,6 +107,8 @@ function createControlPanelWindow({
       isVisible: () => isVisible,
       isFullScreen: () => false,
       isMaximized: () => false,
+      isMinimized: () => false,
+      restore: () => calls.push("restore"),
       getBounds: () => ({ ...currentBounds }),
       getContentBounds: () => ({ ...currentBounds }),
       setContentBounds: (nextBounds) => {
@@ -161,7 +163,8 @@ test("initial restore still reveals the renderer-sized control panel", () => {
   assert.equal(manager.setOnboardingWindowMode("restore"), true);
 
   assert.equal(isVisible(), true);
-  assert.deepEqual(calls, ["clearVisibilityTimer", "show", "focus"]);
+  // showControlPanel() clears the timer again itself; clearing is idempotent.
+  assert.deepEqual(calls, ["clearVisibilityTimer", "clearVisibilityTimer", "show", "focus"]);
   assert.deepEqual(dockVisibilityCalls, [true]);
 });
 
