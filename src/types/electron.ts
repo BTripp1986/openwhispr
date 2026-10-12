@@ -3056,7 +3056,6 @@ declare global {
           systemPrompt?: string;
           tools?: Array<{ name: string; description: string; parameters: Record<string, unknown> }>;
           screenContext?: { data: string; mediaType: string };
-          noteChat?: boolean;
         }
       ) => void;
       cancelAgentStream?: (requestId: string) => void;
