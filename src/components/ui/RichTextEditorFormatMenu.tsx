@@ -1,6 +1,6 @@
-import { useMemo, type ReactNode } from "react";
+import { useEffect, useMemo, type ReactNode } from "react";
 import type { Editor } from "@tiptap/core";
-import { NodeSelection, type EditorState } from "@tiptap/pm/state";
+import { NodeSelection, type EditorState, type Transaction } from "@tiptap/pm/state";
 import { isInTable } from "@tiptap/pm/tables";
 import { useEditorState } from "@tiptap/react";
 import {
@@ -40,7 +40,6 @@ import {
   runCommand,
   useHideOnFocusLeave,
   useMenuDropdown,
-  useRepositionAfterScroll,
   type ChainCommand,
 } from "./RichTextEditorMenus";
 import { insertEmptyTable, isOnEmptyLine } from "./RichTextEditorTable";
@@ -277,8 +276,30 @@ export function RichTextEditorFormatMenu({
   );
   const onEmptyLine = useMenuDropdown(lineMenuOptions);
   useHideOnFocusLeave(editor, MENU_KEYS);
-  // The selection menu waits for the selection to settle before it measures.
-  useRepositionAfterScroll(editor, LINE_MENU, onEmptyLine.menuRef);
+  // ProseMirror scrolls the caret into view after the menus measured it, so a line
+  // menu placed by a transaction that scrolled the note sits off by the scroll.
+  // Tiptap's `scrollTarget` option would re-place it only 60 ms after the scroll,
+  // so place it again in the next frame, before it is painted. The selection menu
+  // waits for the selection to settle before it measures.
+  useEffect(() => {
+    if (editor.isDestroyed) return;
+    let frame = 0;
+    // Tiptap hides a menu by detaching its element.
+    const isShown = (): boolean => !!onEmptyLine.menuRef.current?.isConnected;
+    const onTransaction = ({ transaction }: { transaction: Transaction }): void => {
+      if (!transaction.scrolledIntoView || !isShown()) return;
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        if (editor.isDestroyed || !isShown()) return;
+        editor.view.dispatch(editor.state.tr.setMeta(LINE_MENU, "updatePosition"));
+      });
+    };
+    editor.on("transaction", onTransaction);
+    return () => {
+      cancelAnimationFrame(frame);
+      editor.off("transaction", onTransaction);
+    };
+  }, [editor, onEmptyLine.menuRef]);
   return (
     <>
       <BubbleMenu
