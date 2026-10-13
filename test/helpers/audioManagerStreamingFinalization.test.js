@@ -374,9 +374,6 @@ test("cancelling while the streaming microphone opens never enters recording", a
   );
 });
 
-const managedOrukeetConfig = { dictation: { mode: "streaming" }, streamingProvider: "orukeet" };
-const managedDeepgramConfig = { dictation: { mode: "streaming" }, streamingProvider: "deepgram" };
-
 // A managed Orukeet recording that resolves its provider through the real
 // sttConfig routing, with every provider channel recording what reached it.
 async function startManagedOrukeetRecording(t, AudioManager) {
@@ -419,12 +416,12 @@ async function startManagedOrukeetRecording(t, AudioManager) {
   const { manager, errors, completions } = createStartingManager(AudioManager, {});
   delete manager.getStreamingProvider;
   delete manager.getStreamingProviderName;
-  manager.setSttConfig(managedOrukeetConfig);
+  manager.setSttConfig({ dictation: { mode: "streaming" }, streamingProvider: "orukeet" });
   // The hook's background TTL refresh lands while the mic opens and would now
   // route a new recording elsewhere.
   const openMic = manager._acquireCaptureStream;
   manager._acquireCaptureStream = async (constraints) => {
-    manager.setSttConfig(managedDeepgramConfig);
+    manager.setSttConfig({ dictation: { mode: "streaming" }, streamingProvider: "deepgram" });
     return openMic(constraints);
   };
 
