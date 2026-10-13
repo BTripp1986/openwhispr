@@ -1799,13 +1799,7 @@ class WindowManager {
     // it back to the foreground. A pending visibility timer marks the one
     // hidden state that should still be revealed — the initial renderer-owned
     // startup decision before the panel has ever been shown.
-    if (
-      preserveCurrentVisibility &&
-      !win.isVisible() &&
-      this._controlPanelVisibilityTimer === null
-    ) {
-      return;
-    }
+    if (preserveCurrentVisibility && this._controlPanelVisibilityTimer === null) return;
     // Cancel the backstop either way: once the window has been shown on purpose,
     // a later timer firing could pull it back out of the tray.
     this._clearControlPanelVisibilityTimer();
