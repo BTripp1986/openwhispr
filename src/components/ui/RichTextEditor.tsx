@@ -15,7 +15,7 @@ import type { MentionPerson } from "../../utils/mentionMarkdown";
  * summary callout, an open chat).
  */
 function clearOfBottomOverlay(
-  getContainer: () => HTMLElement | null,
+  containerRef: MutableRefObject<HTMLElement | null>,
   side: number
 ): Record<"top" | "right" | "bottom" | "left", number> {
   return {
@@ -23,7 +23,7 @@ function clearOfBottomOverlay(
     right: side,
     left: side,
     get bottom(): number {
-      const container = getContainer();
+      const container = containerRef.current;
       const overlay = container
         ? parseFloat(getComputedStyle(container).getPropertyValue("--bottom-overlay-height"))
         : NaN;
@@ -77,11 +77,9 @@ export function RichTextEditor({
   const withMentions = useRef(mentionPeople != null).current;
 
   const containerRef = useRef<HTMLDivElement>(null);
-  // Without this, a new line at the end of a long note scrolls only 5px clear of
-  // the bottom edge, under the note's bottom bar.
   const [scrollClearance] = useState(() => ({
-    scrollMargin: clearOfBottomOverlay(() => containerRef.current, 5),
-    scrollThreshold: clearOfBottomOverlay(() => containerRef.current, 0),
+    scrollMargin: clearOfBottomOverlay(containerRef, 5),
+    scrollThreshold: clearOfBottomOverlay(containerRef, 0),
   }));
 
   const editor = useEditor({

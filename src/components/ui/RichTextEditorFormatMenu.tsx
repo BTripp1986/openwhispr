@@ -282,7 +282,6 @@ export function RichTextEditorFormatMenu({
   // so place it again in the next frame, before it is painted. The selection menu
   // waits for the selection to settle before it measures.
   useEffect(() => {
-    if (editor.isDestroyed) return;
     let frame = 0;
     // Tiptap hides a menu by detaching its element.
     const isShown = (): boolean => !!onEmptyLine.menuRef.current?.isConnected;
