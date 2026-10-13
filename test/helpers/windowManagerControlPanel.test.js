@@ -195,3 +195,24 @@ test("compact reauthentication can resize a tray-hidden panel without surfacing 
   assert.deepEqual(calls, ["setContentBounds"]);
   assert.deepEqual(dockVisibilityCalls, []);
 });
+
+test("repeated compact resends keep a tray-hidden panel hidden", () => {
+  // Already at the centered compact bounds, so no resize is needed.
+  const { manager, isVisible } = createManager({
+    visible: true,
+    bounds: { x: 480, y: 138, width: 480, height: 624 },
+  });
+  manager._controlPanelVisibilityTimer = 1;
+  manager.hideControlPanelToTray();
+  dockVisibilityCalls.length = 0;
+
+  // First resend: bounds already match the target.
+  assert.equal(manager.setOnboardingWindowMode("compact"), true);
+  assert.equal(isVisible(), false);
+  assert.deepEqual(dockVisibilityCalls, []);
+
+  // Second resend: the mode is already compact.
+  assert.equal(manager.setOnboardingWindowMode("compact"), true);
+  assert.equal(isVisible(), false);
+  assert.deepEqual(dockVisibilityCalls, []);
+});
