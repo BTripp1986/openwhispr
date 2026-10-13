@@ -1790,16 +1790,12 @@ class WindowManager {
     this._controlPanelVisibilityTimer = null;
   }
 
-  _showControlPanel({ preserveCurrentVisibility = false } = {}) {
+  _showControlPanel({ onlyAtStartup = false } = {}) {
     const win = this.controlPanelWindow;
     if (!win || win.isDestroyed()) return;
-    // Auth and policy refreshes can resend onboarding window modes long after
-    // startup. Those messages own the panel's geometry, not its visibility:
-    // once the user has hidden the panel to the tray, resizing it must not pull
-    // it back to the foreground. A pending visibility timer marks the one
-    // hidden state that should still be revealed — the initial renderer-owned
-    // startup decision before the panel has ever been shown.
-    if (preserveCurrentVisibility && this._controlPanelVisibilityTimer === null) return;
+    // onlyAtStartup reveals the panel only while the startup timer is pending;
+    // after that, a hidden or minimized panel stays as the user left it.
+    if (onlyAtStartup && this._controlPanelVisibilityTimer === null) return;
     // Cancel the backstop either way: once the window has been shown on purpose,
     // a later timer firing could pull it back out of the tray.
     this._clearControlPanelVisibilityTimer();
@@ -1888,7 +1884,7 @@ class WindowManager {
       this._onboardingRestoreBounds = null;
       this._onboardingWindowMode = null;
       this._onboardingWindowState = null;
-      this._showControlPanel({ preserveCurrentVisibility: true });
+      this._showControlPanel({ onlyAtStartup: true });
       return true;
     }
 
@@ -1907,7 +1903,7 @@ class WindowManager {
     this._applyOnboardingWindowChrome(win, mode);
 
     if (this._onboardingWindowMode === mode) {
-      this._showControlPanel({ preserveCurrentVisibility: true });
+      this._showControlPanel({ onlyAtStartup: true });
       return true;
     }
 
@@ -1921,13 +1917,13 @@ class WindowManager {
       current.height === next.height
     ) {
       this._onboardingWindowMode = mode;
-      this._showControlPanel({ preserveCurrentVisibility: true });
+      this._showControlPanel({ onlyAtStartup: true });
       return true;
     }
 
     win.setContentBounds(next, true);
     this._onboardingWindowMode = mode;
-    this._showControlPanel({ preserveCurrentVisibility: true });
+    this._showControlPanel({ onlyAtStartup: true });
     return true;
   }
 

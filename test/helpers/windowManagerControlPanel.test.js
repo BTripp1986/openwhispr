@@ -10,80 +10,31 @@ Module._load = function loadWindowManagerWithStubs(request, parent, isMain) {
     return {
       app: { on: () => undefined },
       screen: {
-        getPrimaryDisplay: () => ({}),
         getDisplayMatching: () => ({
           workArea: { x: 0, y: 0, width: 1440, height: 900 },
         }),
-        getDisplayNearestPoint: () => ({
-          workArea: { x: 0, y: 0, width: 1440, height: 900 },
-        }),
       },
-      BrowserWindow: class {},
-      shell: {},
-      dialog: {},
     };
   }
-  if (request === "./debugLogger") {
-    return {
-      warn: () => undefined,
-      debug: () => undefined,
-      log: () => undefined,
-    };
-  }
-  if (request === "./hotkeyManager") {
-    const FakeHotkeyManager = class {
-      unregisterAll() {}
-
-      isInListeningMode() {
-        return false;
-      }
-    };
-    FakeHotkeyManager.isGlobeLikeHotkey = () => false;
-    return FakeHotkeyManager;
-  }
-  if (request === "./dragManager") {
-    return class {
-      cleanup() {}
-    };
-  }
+  if (request === "./debugLogger") return {};
+  if (request === "./hotkeyManager") return class {};
+  if (request === "./dragManager") return class {};
   if (request === "./menuManager") return {};
-  if (request === "./devServerManager") {
-    return {
-      DEV_SERVER_PORT: 5173,
-      DEV_SERVER_URL: "http://localhost:5173",
-      getAppFilePath: () => ({ path: "/app/index.html", query: {} }),
-      waitForDevServer: async () => undefined,
-    };
-  }
+  if (request === "./devServerManager") return {};
   if (request === "./dockManager") {
     return {
       setControlPanelVisible: (visible) => dockVisibilityCalls.push(visible),
     };
   }
-  if (request === "./i18nMain") return { i18nMain: { t: (key) => key } };
+  if (request === "./i18nMain") return { i18nMain: {} };
   if (request === "./windowConfig") {
     return {
-      MAIN_WINDOW_CONFIG: {},
-      CONTROL_PANEL_CONFIG: {},
       NOTIFICATION_WINDOW_CONFIG: {},
-      AUTO_END_NOTIFICATION_WINDOW_SIZE: { width: 620, height: 116 },
-      getMeetingNotificationWindowSize: () => ({ width: 392, height: 92 }),
       WINDOW_SIZES: { BASE: { width: 96, height: 96 } },
       ONBOARDING_WINDOW_SIZES: {
         COMPACT: { width: 480, height: 624 },
         EXPANDED: { width: 1000, height: 740 },
       },
-      WindowPositionUtil: {
-        setupAlwaysOnTop: () => undefined,
-        clampToWorkArea: (bounds) => bounds,
-        getMainWindowPosition: () => ({ x: 0, y: 0 }),
-        getNotificationPosition: () => ({ x: 0, y: 0 }),
-      },
-      fitAssistantWindowToWorkArea: (size) => size,
-      fitAssistantContentWindowToWorkArea: (height) => ({ width: 466, height }),
-      fitDictationErrorWindowToWorkArea: (size) => size,
-      fitDictationErrorContentWindowToWorkArea: (height) => ({ width: 466, height }),
-      resolveHorizontalWindowDirection: () => "right",
     };
   }
   return originalLoad.call(this, request, parent, isMain);
@@ -108,7 +59,6 @@ function createControlPanelWindow({
       isFullScreen: () => false,
       isMaximized: () => false,
       isMinimized: () => false,
-      restore: () => calls.push("restore"),
       getBounds: () => ({ ...currentBounds }),
       getContentBounds: () => ({ ...currentBounds }),
       setContentBounds: (nextBounds) => {
@@ -145,10 +95,6 @@ function createManager(windowOptions) {
   const manager = new WindowManager();
   const fake = createControlPanelWindow(windowOptions);
   manager.controlPanelWindow = fake.window;
-  manager._clearControlPanelVisibilityTimer = () => {
-    manager._controlPanelVisibilityTimer = null;
-    fake.calls.push("clearVisibilityTimer");
-  };
   return { manager, ...fake };
 }
 
@@ -163,8 +109,7 @@ test("initial restore still reveals the renderer-sized control panel", () => {
   assert.equal(manager.setOnboardingWindowMode("restore"), true);
 
   assert.equal(isVisible(), true);
-  // showControlPanel() clears the timer again itself; clearing is idempotent.
-  assert.deepEqual(calls, ["clearVisibilityTimer", "clearVisibilityTimer", "show", "focus"]);
+  assert.deepEqual(calls, ["show", "focus"]);
   assert.deepEqual(dockVisibilityCalls, [true]);
 });
 
@@ -198,21 +143,24 @@ test("compact reauthentication can resize a tray-hidden panel without surfacing 
 
 test("repeated compact resends keep a tray-hidden panel hidden", () => {
   // Already at the centered compact bounds, so no resize is needed.
-  const { manager, isVisible } = createManager({
+  const { manager, calls, isVisible } = createManager({
     visible: true,
     bounds: { x: 480, y: 138, width: 480, height: 624 },
   });
   manager._controlPanelVisibilityTimer = 1;
   manager.hideControlPanelToTray();
+  calls.length = 0;
   dockVisibilityCalls.length = 0;
 
   // First resend: bounds already match the target.
   assert.equal(manager.setOnboardingWindowMode("compact"), true);
   assert.equal(isVisible(), false);
+  assert.deepEqual(calls, []);
   assert.deepEqual(dockVisibilityCalls, []);
 
   // Second resend: the mode is already compact.
   assert.equal(manager.setOnboardingWindowMode("compact"), true);
   assert.equal(isVisible(), false);
+  assert.deepEqual(calls, []);
   assert.deepEqual(dockVisibilityCalls, []);
 });
