@@ -1156,7 +1156,10 @@ test("the menus mount without error on an editor useEditor already destroyed", a
       React.createElement(
         React.Fragment,
         null,
-        React.createElement(RichTextEditorFormatMenu, { editor }),
+        React.createElement(RichTextEditorFormatMenu, {
+          editor,
+          lineMenuPadding: { top: 0, right: 0, bottom: 0, left: 0 },
+        }),
         React.createElement(RichTextEditorTableMenu, { editor })
       )
     )
@@ -1192,9 +1195,10 @@ function fakeLayout(t, editor) {
     },
   });
   // Floating UI keeps the menus inside the window, which happy-dom gives no size.
+  // The scroller reaches the window's bottom, as the note view does.
   const { documentElement } = happyWindow.document;
   Object.defineProperty(documentElement, "clientWidth", { value: 1024, configurable: true });
-  Object.defineProperty(documentElement, "clientHeight", { value: 768, configurable: true });
+  Object.defineProperty(documentElement, "clientHeight", { value: VIEWPORT, configurable: true });
   t.after(() => {
     Object.defineProperty(proto, "scrollTop", scrollTopDescriptor);
     delete documentElement.clientWidth;
@@ -1238,7 +1242,7 @@ test("typing at the end of a long note keeps the caret clear of the note's botto
   assert.deepEqual(notes.errors, []);
 });
 
-test("the empty-line toolbar stays on the caret when Enter scrolls the note", async (t) => {
+test("the empty-line toolbar stays on the caret when Enter scrolls the note, above it over the bar", async (t) => {
   const notes = await mountNotes(t, LONG_NOTE);
   const caret = fakeLayout(t, notes.editor());
   const scroller = notes.editor().view.dom.parentElement;
@@ -1250,8 +1254,15 @@ test("the empty-line toolbar stays on the caret when Enter scrolls the note", as
   const menu = happyWindow.document.querySelector(".rich-text-editor-line-menu");
   assert.equal(!!menu?.isConnected, true, "the toolbar shows on the new empty line");
   // Floating UI finds no offset parent in happy-dom, so it places the toolbar in
-  // viewport coordinates: beside the caret, centered on it (it has no height here).
-  const { top, bottom } = caret();
-  assert.equal(parseFloat(menu.style.top), (top + bottom) / 2);
+  // viewport coordinates: below the caret, Tiptap's 8px offset away.
+  const top = () => parseFloat(menu.style.top);
+  assert.equal(top(), caret().bottom + 8);
+
+  // The caret now stops just above the bar, which leaves the toolbar no room below.
+  const height = 40;
+  Object.defineProperty(menu, "offsetHeight", { value: height, configurable: true });
+  notes.host.firstElementChild.style.setProperty("--bottom-overlay-height", "138px");
+  await notes.act(() => pressKey(notes.editor(), "Enter"));
+  assert.ok(top() + height <= caret().top, `above the caret, not under the bar (top ${top()})`);
   assert.deepEqual(notes.errors, []);
 });

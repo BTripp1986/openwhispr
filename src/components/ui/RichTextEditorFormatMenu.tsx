@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import type { Editor } from "@tiptap/core";
 import { NodeSelection, type EditorState } from "@tiptap/pm/state";
 import { isInTable } from "@tiptap/pm/tables";
@@ -258,10 +258,24 @@ function FormatToolbar({
   );
 }
 
-/** Marks, text style, lists and tables for selected text or an empty line. */
-export function RichTextEditorFormatMenu({ editor }: { editor: Editor }) {
+/**
+ * Marks, text style, lists and tables for selected text or an empty line.
+ * `lineMenuPadding` is space at the editor's edges that leaves the empty-line
+ * toolbar no room, such as the note's bottom bar: it flips above the caret instead.
+ */
+export function RichTextEditorFormatMenu({
+  editor,
+  lineMenuPadding,
+}: {
+  editor: Editor;
+  lineMenuPadding: Record<"top" | "right" | "bottom" | "left", number>;
+}) {
   const onSelection = useMenuDropdown();
-  const onEmptyLine = useMenuDropdown(LINE_MENU_OPTIONS);
+  const lineMenuOptions = useMemo(
+    () => ({ ...LINE_MENU_OPTIONS, flip: { padding: lineMenuPadding } }),
+    [lineMenuPadding]
+  );
+  const onEmptyLine = useMenuDropdown(lineMenuOptions);
   useHideOnFocusLeave(editor, MENU_KEYS);
   // The selection menu waits for the selection to settle before it measures.
   useRepositionAfterScroll(editor, LINE_MENU, onEmptyLine.menuRef);

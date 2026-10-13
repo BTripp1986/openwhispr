@@ -167,7 +167,12 @@ export function RichTextEditor({
           disabled && "pointer-events-none opacity-70"
         )}
       />
-      {editor && !disabled && <RichTextEditorFormatMenu editor={editor} />}
+      {editor && !disabled && (
+        <RichTextEditorFormatMenu
+          editor={editor}
+          lineMenuPadding={scrollClearance.scrollThreshold}
+        />
+      )}
       {editor && !disabled && <RichTextEditorTableMenu editor={editor} />}
     </div>
   );
