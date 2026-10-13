@@ -70,7 +70,7 @@ const EXPECTED_SHARED_FIELD_DIRECTIONS = {
   "src/components/SettingsPage.tsx": ["ltr", "ltr", "ltr", "ltr", "ltr", "ltr"],
   "src/components/SnippetsView.tsx": ["auto", "auto", "auto", "auto"],
   "src/components/TranscriptionModelPicker.tsx": ["ltr", "ltr", "ltr"],
-  "src/components/notes/ActionManagerDialog.tsx": ["auto", "auto"],
+  "src/components/notes/ActionManagerDialog.tsx": ["auto", "auto", "auto"],
   "src/components/notes/DeleteSpaceDialog.tsx": ["auto"],
   "src/components/notes/UploadAudioView.tsx": ["auto"],
   "src/components/onboarding/ProviderSetupStep.tsx": ["ltr", "ltr", "ltr", "ltr", "ltr", "ltr"],
@@ -88,6 +88,8 @@ const EXPECTED_SHARED_FIELD_DIRECTIONS = {
 const EXPECTED_NATIVE_FIELD_DIRECTIONS = {
   "src/components/ApiKeysSection.tsx": ["inherit"],
   "src/components/CommandSearch.tsx": ["auto"],
+  // Folder names and search accept user text in any script.
+  "src/components/MeetingNotificationFolderPicker.tsx": ["auto", "auto"],
   "src/components/MemberPickList.tsx": ["auto"],
   "src/components/ReferralDashboard.tsx": ["ltr"],
   "src/components/SettingsPage.tsx": ["inherit"],
@@ -97,7 +99,7 @@ const EXPECTED_NATIVE_FIELD_DIRECTIONS = {
   "src/components/chat/EmailApprovalFields.tsx": ["auto", "auto", "auto", "auto"],
   // Title and description, or a comment: prose in any script.
   "src/components/chat/IssueApprovalFields.tsx": ["auto", "auto"],
-  "src/components/notes/ActionManagerDialog.tsx": ["auto"],
+  "src/components/notes/ActionManagerDialog.tsx": ["auto", "auto"],
   "src/components/notes/AddNotesToFolderDialog.tsx": ["auto"],
   "src/components/notes/MeetingTranscriptChat.tsx": ["ltr", "auto"],
   "src/components/notes/NoteEditor.tsx": ["auto", "auto"],

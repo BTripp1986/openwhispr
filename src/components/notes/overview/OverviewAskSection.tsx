@@ -7,11 +7,12 @@ import { observeChatComposerInset } from "../../chat/composerLayout";
 import type { Message, AgentState } from "../../chat/types";
 import type { ContainerConversationItem } from "../../../hooks/useContainerChat";
 import { ConversationPicker } from "../ConversationPicker";
+import { cn } from "../../lib/utils";
 
 const PROMPT_CHIP_KEYS = [
   "notes.overview.ask.chips.catchUp",
   "notes.overview.ask.chips.keyDecisions",
-  "notes.overview.ask.chips.inFlight",
+  "notes.overview.ask.chips.openActionItems",
 ] as const;
 
 interface OverviewAskSectionProps {
@@ -85,7 +86,12 @@ export function OverviewAskSection({
                     onTextSubmit(t(key));
                   }}
                   disabled={agentState !== "idle"}
-                  className="inline-flex shrink-0 items-center gap-1.5 px-2.5 h-7 whitespace-nowrap rounded-full border border-border/70 bg-card shadow-sm dark:border-white/10 text-[11px] text-foreground/55 hover:text-foreground/80 hover:border-border/70 hover:bg-surface-3 disabled:text-foreground/30 disabled:pointer-events-none transition-colors duration-150 focus:outline-none focus-visible:ring-1 focus-visible:ring-ring/30"
+                  className={cn(
+                    "inline-flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-2.5 text-[11px]",
+                    "border border-border/70 bg-card text-foreground/55 shadow-sm dark:border-white/10",
+                    "hover:bg-surface-3 hover:text-foreground/80 disabled:pointer-events-none disabled:text-foreground/30",
+                    "transition-colors duration-150 focus:outline-none focus-visible:ring-1 focus-visible:ring-ring/30"
+                  )}
                 >
                   <Sparkles size={10} className="text-foreground/45 shrink-0" />
                   {t(key)}

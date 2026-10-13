@@ -138,16 +138,6 @@ async function renderSection(t, plan, electronAPI = {}) {
   return container;
 }
 
-function listItems(container) {
-  const items = [];
-  const walk = (node) => {
-    if (node.tagName === "LI") items.push(node.textContent);
-    for (const child of node.childNodes ?? []) walk(child);
-  };
-  walk(container);
-  return items;
-}
-
 const receipt = (id, destinationLabel, state = "sent") => ({
   id,
   connector: "email",
@@ -172,7 +162,7 @@ test("automatic names the app it resolved to", async (t) => {
   const { textContent } = await renderSection(t, { usageState: usage(true) });
   assert.match(
     textContent,
-    /connectors\.email\.autoResolved\{"target":"connectors\.email\.targets\.outlookWork"\}/
+    /connectors\.email\.automaticHint\{"target":"connectors\.email\.targets\.outlookWork"\}/
   );
 });
 
@@ -185,16 +175,15 @@ test("while usage is unknown, the card follows the saved flag like the chat does
 test("while usage is unknown and the flag is unset, the card asks for a plan", async (t) => {
   const loading = { status: "loading", accountId: "acct" };
   const { textContent } = await renderSection(t, { usageState: loading, subscribedFlag: false });
-  assert.match(textContent, /connectors\.email\.proRequired/);
+  assert.match(textContent, /connectors\.upsell/);
 });
 
-test("free users see that a paid plan is required and a View Plans button", async (t) => {
+test("free users see one upsell above the connectors, which still say what they do", async (t) => {
   const container = await renderSection(t, { usageState: usage(false) });
-  // Matches the API card pattern (IntegrationsView.tsx): the description says
-  // a paid plan is required, and the CTA is the primary/filled button.
-  assert.match(container.textContent, /connectors\.email\.proRequired/);
-  assert.doesNotMatch(container.textContent, /connectors\.email\.description/);
+  assert.match(container.textContent, /connectors\.upsell/);
+  assert.match(container.textContent, /connectors\.email\.description/);
   assert.doesNotMatch(container.textContent, /connectors\.email\.targets\.gmail/);
+  // The section's first button is the upsell's primary View plans.
   const button = findElement(container, (node) => node.tagName === "BUTTON");
   assert.match(button.textContent, /integrations\.api\.viewPlans/);
   assert.equal(button.getAttribute("variant"), null);
@@ -230,64 +219,25 @@ test("while the policy is unresolved, the card says drafts are unavailable", asy
 
 test("an unresolved policy doesn't hide the upsell from a free user", async (t) => {
   const { textContent } = await renderSection(t, { usageState: usage(false), allowed: false });
-  assert.match(textContent, /connectors\.email\.proRequired/);
+  assert.match(textContent, /connectors\.upsell/);
   assert.match(textContent, /integrations\.api\.viewPlans/);
 });
 
-test("a change of main's account scope clears and refetches the receipts", async (t) => {
-  // The login rows listen too, as main's preload allows.
-  const scopeListeners = new Set();
-  let answerSecondFetch = null;
-  const answers = [
-    Promise.resolve([receipt("a", "first@example.com")]),
-    new Promise((resolve) => {
-      answerSecondFetch = resolve;
-    }),
-  ];
+test("Connectors shows no recent actions or receipt content and never fetches history", async (t) => {
   let fetches = 0;
   const container = await renderSection(
     t,
-    { usageState: usage(true) },
+    { isPaid: true, statuses: { slack: SLACK, gmail: { ...SLACK, id: "gmail" } } },
     {
-      onActiveAccountScopeChanged: (callback) => {
-        scopeListeners.add(callback);
-        return () => scopeListeners.delete(callback);
+      connectorRecentActions: async () => {
+        fetches++;
+        return [receipt("a", "hidden@example.test")];
       },
-      connectorRecentActions: () => answers[fetches++],
     }
   );
-  assert.match(listItems(container).join(), /first@example\.com/);
-
-  assert.ok(scopeListeners.size > 0);
-  await React.act(async () => {
-    for (const listener of [...scopeListeners])
-      listener({ accountId: "acct-b", authGeneration: 2 });
-  });
-  assert.equal(fetches, 2);
-  assert.deepEqual(listItems(container), []);
-
-  await React.act(async () => answerSecondFetch([receipt("b", "second@example.com")]));
-  const items = listItems(container);
-  assert.equal(items.length, 1);
-  assert.match(items[0], /second@example\.com/);
-});
-
-test("recent receipts name the recipient, or the action when a quit cut it short", async (t) => {
-  const container = await renderSection(
-    t,
-    { usageState: usage(true) },
-    {
-      connectorRecentActions: async () => [
-        receipt("a", "gabe@example.com", "failed"),
-        receipt("b", null, "unknown"),
-      ],
-    }
-  );
-
-  const items = listItems(container);
-  assert.equal(items.length, 2);
-  assert.match(items[0], /^connectors\.recent\.actions\.email_draft/);
-  assert.match(items[1], /^connectors\.recent\.unlabeledActions\.email_draft/);
+  assert.equal(fetches, 0);
+  assert.doesNotMatch(container.textContent, /connectors\.recent|hidden@example\.test/);
+  assert.ok(buttonWithText(container, "connectors.slack.disconnect"));
 });
 
 test("a connected Slack shows the account and Disconnect", async (t) => {
@@ -326,11 +276,12 @@ test("a stale login offers Reconnect and Disconnect", async (t) => {
   assert.match(staleMarkup, /connectors\.slack\.needsReconnect/);
 });
 
-test("free users with no login see Upgrade on every row and no Connect", async (t) => {
+test("free users with no login see a single View plans and no Connect", async (t) => {
   const none = await renderSection(t, { isPaid: false, blocked: false });
-  // Email, Gmail, Slack, Linear and GitHub.
-  assert.equal(count(none.textContent, /integrations\.api\.viewPlans/g), 5);
+  assert.equal(count(none.textContent, /integrations\.api\.viewPlans/g), 1);
   assert.equal(buttonWithText(none, "connectors.slack.connect"), null);
+  // Every connector is still listed, each marked beta: email, Gmail, Slack, Linear and GitHub.
+  assert.equal(count(none.textContent, /connectors\.beta/g), 5);
 });
 
 test("free users can always disconnect a login they have", async (t) => {
@@ -340,11 +291,7 @@ test("free users can always disconnect a login they have", async (t) => {
     statuses: { slack: SLACK },
   });
   assert.match(lapsed.textContent, /connectors\.slack\.disconnect/);
-  assert.equal(
-    count(lapsed.textContent, /integrations\.api\.viewPlans/g),
-    4,
-    "only the email, Gmail, Linear and GitHub rows' Upgrade"
-  );
+  assert.equal(count(lapsed.textContent, /integrations\.api\.viewPlans/g), 1);
 });
 
 test("an org that turned connectors off still lets the user remove a login", async (t) => {
@@ -387,7 +334,7 @@ test("Send from chat can be picked only while Gmail is connected", async (t) => 
   // Automatic sends from chat once Gmail is connected.
   assert.match(
     container.textContent,
-    /connectors\.email\.autoResolved\{"target":"connectors\.email\.targets\.gmailSend"\}/
+    /connectors\.email\.automaticHint\{"target":"connectors\.email\.targets\.gmailSend"\}/
   );
 });
 
@@ -398,7 +345,7 @@ test("without a Gmail login, Send from chat is listed but can't be picked, and s
   assert.equal(option.textContent, "connectors.email.targets.gmailSendConnectFirst");
   assert.match(
     container.textContent,
-    /connectors\.email\.autoResolved\{"target":"connectors\.email\.targets\.outlookWork"\}/
+    /connectors\.email\.automaticHint\{"target":"connectors\.email\.targets\.outlookWork"\}/
   );
 });
 
@@ -412,7 +359,7 @@ test("a Gmail login that needs reconnecting can't be picked, but Automatic still
   assert.equal(option.textContent, "connectors.email.targets.gmailSendConnectFirst");
   assert.match(
     container.textContent,
-    /connectors\.email\.autoResolved\{"target":"connectors\.email\.targets\.gmailSend"\}/
+    /connectors\.email\.automaticHint\{"target":"connectors\.email\.targets\.gmailSend"\}/
   );
   assert.match(container.textContent, /connectors\.gmail\.needsReconnect/);
 });
@@ -522,4 +469,17 @@ test("every CONNECTOR_ROWS entry renders after the email row, in list order", as
     assert.ok(index > previousIndex, `the ${row.id} row renders after the previous row`);
     previousIndex = index;
   }
+});
+
+test("a free user whose org turned connectors off sees why, not an upsell", async (t) => {
+  const { textContent } = await renderSection(t, { usageState: usage(false), blocked: true });
+  assert.match(textContent, /connectors\.policyOff/);
+  assert.doesNotMatch(textContent, /connectors\.upsell/);
+  assert.doesNotMatch(textContent, /integrations\.api\.viewPlans/);
+});
+
+test("Automatic is initially selected and has a short label separate from its current target", async (t) => {
+  const container = await renderSection(t, { isPaid: true });
+  assert.equal(shownTarget(container), "auto");
+  assert.equal(pickerOption(container, "auto").textContent, "connectors.email.targets.auto");
 });
