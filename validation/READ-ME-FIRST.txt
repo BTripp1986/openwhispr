@@ -113,7 +113,7 @@ thing to the team i guess":
      one to "Cleaned Dictation". Both start empty.
      Complete every recording below by tapping the SAME shortcut twice - once
      to start, once to stop. Do not stop one mode with the other mode's key
-     until step 10, which tests that on purpose.
+     until step 11, which tests that on purpose.
   2. Turn your saved AI cleanup setting ON. Do one RAW recording (tap RAW, tap
      RAW again), then one CLEANED recording (tap CLEANED, tap CLEANED again).
      Expect no cleanup request for RAW and one for CLEANED in the log; any
