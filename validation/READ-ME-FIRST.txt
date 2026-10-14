@@ -77,6 +77,89 @@ How to run it
 
 No Node, npm, git or build tools are needed.
 
+What to actually test
+---------------------
+The feature is two NEW global shortcuts that pick one recording's cleanup,
+without changing your saved cleanup setting:
+  RAW     - transcribe and paste, skipping the AI cleanup pass.
+  CLEANED - transcribe, always run the configured cleanup, then paste.
+Your existing Dictation Hotkey is unchanged and still follows the saved
+setting.
+
+IMPORTANT - both new shortcuts are TAP-TO-TOGGLE ONLY: press once to start,
+press again to stop. They do NOT support Hold / push-to-talk, the same as the
+existing Voice Assistant, Translation and Meeting shortcuts. Holding one will
+not stop the recording when you let go. Only the main Dictation Hotkey
+supports Hold, and its behaviour is not changed. Neither new shortcut has a
+default binding, so both start empty until you assign them.
+
+ALSO BY DESIGN - pressing the OTHER mode's shortcut while a recording is
+running simply STOPS that recording. It does not switch its mode. A recording
+keeps whichever mode it started in, all the way through transcription. So if
+you tap RAW and then tap CLEANED to stop it, you get a RAW result, and that is
+correct, not a bug.
+
+What "raw" means: it skips the optional AI cleanup pass. It is NOT a promise of
+word-for-word output - the speech-to-text model may still tidy up filler on its
+own. So judge RAW by whether the cleanup pass ran, not by how the text reads.
+The decisive check is the debug log (see below): a raw recording makes no
+cleanup request at all. A visible difference between raw and cleaned is useful
+when you see it, but it is not required and its absence is not a failure.
+
+Suggested run, with a disfluent sample like "um so like can you uh send the
+thing to the team i guess":
+
+  1. Settings -> Hotkeys: assign a shortcut to "Raw Dictation" and a different
+     one to "Cleaned Dictation". Both start empty.
+     Complete every recording below by tapping the SAME shortcut twice - once
+     to start, once to stop. Do not stop one mode with the other mode's key
+     until step 10, which tests that on purpose.
+  2. Turn your saved AI cleanup setting ON. Do one RAW recording (tap RAW, tap
+     RAW again), then one CLEANED recording (tap CLEANED, tap CLEANED again).
+     Expect no cleanup request for RAW and one for CLEANED in the log; any
+     difference in the pasted text is a bonus, not the test.
+  3. Turn the saved setting OFF and repeat both, the same way. RAW must still
+     skip cleanup and CLEANED must still run it. This is the main point of the
+     feature, and the log is what proves it.
+  4. After each one, reopen Settings and confirm your saved cleanup setting is
+     exactly where you left it - using a shortcut must never change it.
+  5. Tap your normal Dictation Hotkey and confirm it still follows the saved
+     setting (cleaned when ON, plain when OFF), and that Hold still works on it
+     if you use Hold.
+  6. Dictate something that sounds like talking to the assistant, e.g.
+     "hey <your agent name> what is the weather". Through RAW or CLEANED it
+     must paste that as dictated text, NOT an assistant answer.
+  7. Quit the test build, start it again, and confirm both shortcuts are still
+     assigned and still work.
+  8. Now clear one of them (the X / clear control in Settings), quit, and start
+     again. It must come back EMPTY, not showing a binding that no longer
+     works. Re-assign it afterwards.
+  9. Try assigning a shortcut already used by another action - it should be
+     refused with a message naming the conflict, not silently accepted.
+ 10. Clear cleanup configuration (or pick no cleanup model) and do a CLEANED
+     recording: you should still get your transcript pasted, plus a notice
+     that cleanup did not run ("AI cleanup isn't set up"). It must not
+     silently pass off the raw text as cleaned.
+ 11. Now the cross-stop and race cases. Start a RAW recording and stop it by
+     tapping CLEANED: the result must be RAW, because a recording keeps the
+     mode it started in. Then cancel a recording with Esc and immediately use
+     the other shortcut; tap one shortcut repeatedly; press the other one
+     while the first is still processing. Nothing should paste twice, paste
+     late, or come back in the wrong mode.
+ 12. Smoke-test that Voice Assistant, Translation and meeting/note recording
+     still behave as before. Say so if any of them is unconfigured rather than
+     counting it as passed.
+
+How to read the decisive evidence: start from
+Launch-OpenWhispr-Test-Debug.cmd and open the newest file in
+%APPDATA%\OpenWhispr-development\logs. Each recording logs one ROUTE_RESOLVED
+line:
+  raw      -> cleanupMode "raw",        cleanupSelected false, kind "skip"
+  cleaned  -> cleanupMode "cleaned",    cleanupSelected true,  kind "cleanup"
+  normal   -> cleanupMode "preference", following your saved setting
+A raw recording shows no cleanup request after that line. Logs can contain
+transcript text, so dictate synthetic phrases and skim a log before sharing it.
+
 What is missing compared to a release
 ------------------------------------
 This artifact is built without any of the project's secrets, so:
