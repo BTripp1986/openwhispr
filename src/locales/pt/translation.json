@@ -2121,6 +2121,14 @@
       "translationHotkey": {
         "title": "Atalho de Tradução",
         "description": "Dite em qualquer idioma: o texto colado sai traduzido"
+      },
+      "rawDictationHotkey": {
+        "title": "Atalho de ditado bruto",
+        "description": "Dite e cole o texto como foi falado, sem limpeza por IA mesmo que ela esteja ativada"
+      },
+      "cleanedDictationHotkey": {
+        "title": "Atalho de ditado limpo",
+        "description": "Dite e execute sempre a limpeza por IA antes de colar, mesmo que ela esteja desativada"
       }
     },
     "permissions": {
@@ -3732,6 +3740,9 @@
       "cleanupFailed": {
         "title": "Falha na limpeza",
         "description": "Seu ditado foi colado sem limpeza por IA."
+      },
+      "cleanupUnavailable": {
+        "title": "A limpeza por IA não está configurada"
       }
     },
     "mic": {

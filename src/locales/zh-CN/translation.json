@@ -2142,6 +2142,14 @@
       "translationHotkey": {
         "title": "翻译快捷键",
         "description": "用任何语言听写——粘贴的文本会自动翻译"
+      },
+      "rawDictationHotkey": {
+        "title": "原始听写快捷键",
+        "description": "听写并按原话粘贴，即使已开启 AI 清理也会跳过"
+      },
+      "cleanedDictationHotkey": {
+        "title": "清理听写快捷键",
+        "description": "听写并在粘贴前始终执行 AI 清理，即使已关闭"
       }
     },
     "permissions": {
@@ -3732,6 +3740,9 @@
       "cleanupFailed": {
         "title": "清理失败",
         "description": "你的听写已直接粘贴，未经 AI 清理。"
+      },
+      "cleanupUnavailable": {
+        "title": "尚未设置 AI 清理"
       }
     },
     "mic": {

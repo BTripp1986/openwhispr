@@ -2436,6 +2436,14 @@
       "translationHotkey": {
         "title": "Raccourci de Traduction",
         "description": "Dictez dans n'importe quelle langue : le texte collé ressort traduit"
+      },
+      "rawDictationHotkey": {
+        "title": "Raccourci de dictée brute",
+        "description": "Dictez et collez le texte tel qu'il a été prononcé, sans nettoyage par IA même s'il est activé"
+      },
+      "cleanedDictationHotkey": {
+        "title": "Raccourci de dictée nettoyée",
+        "description": "Dictez et appliquez toujours le nettoyage par IA avant de coller, même s'il est désactivé"
       }
     },
     "permissions": {
@@ -3902,6 +3910,9 @@
       "cleanupFailed": {
         "title": "Échec du nettoyage",
         "description": "Votre dictée a été collée sans nettoyage par IA."
+      },
+      "cleanupUnavailable": {
+        "title": "Le nettoyage par IA n'est pas configuré"
       }
     },
     "mic": {

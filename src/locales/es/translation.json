@@ -2194,6 +2194,14 @@
       "translationHotkey": {
         "title": "Atajo de Traducción",
         "description": "Dicta en cualquier idioma: el texto pegado sale traducido"
+      },
+      "rawDictationHotkey": {
+        "title": "Atajo de dictado sin procesar",
+        "description": "Dicta y pega el texto tal como lo dijiste, sin limpieza con IA aunque esté activada"
+      },
+      "cleanedDictationHotkey": {
+        "title": "Atajo de dictado limpiado",
+        "description": "Dicta y aplica siempre la limpieza con IA antes de pegar, aunque esté desactivada"
       }
     },
     "permissions": {
@@ -3784,6 +3792,9 @@
       "cleanupFailed": {
         "title": "Limpieza fallida",
         "description": "Tu dictado se pegó sin limpieza con IA."
+      },
+      "cleanupUnavailable": {
+        "title": "La limpieza con IA no está configurada"
       }
     },
     "mic": {

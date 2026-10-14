@@ -1395,6 +1395,8 @@ declare global {
       onToggleDictation: (callback: () => void) => () => void;
       onToggleVoiceAgent?: (callback: () => void) => () => void;
       onToggleTranslation?: (callback: () => void) => () => void;
+      onToggleRawDictation?: (callback: () => void) => () => void;
+      onToggleCleanedDictation?: (callback: () => void) => () => void;
       onOpenAssistantPanel?: (callback: () => void) => () => void;
       onStartDictation?: (callback: () => void) => () => void;
       onStopDictation?: (callback: () => void) => () => void;
@@ -2850,6 +2852,14 @@ declare global {
       getVoiceAgentKey?: () => Promise<string>;
       updateTranslationHotkey?: (hotkey: string) => Promise<{ success: boolean; message?: string }>;
       getTranslationKey?: () => Promise<string>;
+      updateRawDictationHotkey?: (
+        hotkey: string
+      ) => Promise<{ success: boolean; message?: string }>;
+      getRawDictationKey?: () => Promise<string>;
+      updateCleanedDictationHotkey?: (
+        hotkey: string
+      ) => Promise<{ success: boolean; message?: string }>;
+      getCleanedDictationKey?: () => Promise<string>;
       createAgentConversation?: (
         title: string,
         noteId?: number | null,

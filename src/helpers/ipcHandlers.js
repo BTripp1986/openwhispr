@@ -11914,6 +11914,59 @@ class IPCHandlers {
       return this.environmentManager.getTranslationKey?.() || "";
     });
 
+    // Raw and cleaned dictation share one shape with the translation hotkey
+    // above: register atomically, persist only on success, clear on an empty
+    // value. Neither touches the saved cleanup preference.
+    for (const { channel, slot, callbackField, save, readChannel, read, label } of [
+      {
+        channel: "update-raw-dictation-hotkey",
+        slot: "rawDictation",
+        callbackField: "_rawDictationHotkeyCallback",
+        save: (hotkey) => this.environmentManager.saveRawDictationKey?.(hotkey),
+        readChannel: "get-raw-dictation-key",
+        read: () => this.environmentManager.getRawDictationKey?.() || "",
+        label: "Raw dictation",
+      },
+      {
+        channel: "update-cleaned-dictation-hotkey",
+        slot: "cleanedDictation",
+        callbackField: "_cleanedDictationHotkeyCallback",
+        save: (hotkey) => this.environmentManager.saveCleanedDictationKey?.(hotkey),
+        readChannel: "get-cleaned-dictation-key",
+        read: () => this.environmentManager.getCleanedDictationKey?.() || "",
+        label: "Cleaned dictation",
+      },
+    ]) {
+      ipcMain.handle(channel, async (_event, hotkey) => {
+        const hotkeyManager = this.windowManager.hotkeyManager;
+        const callback = this.windowManager[callbackField];
+        if (!callback) {
+          return { success: false };
+        }
+
+        if (!hotkey) {
+          const removed = await hotkeyManager.unregisterSlot(slot);
+          if (removed === false) return { success: false };
+          save("");
+          this.windowManager.reconcileNativeKeyListeners();
+          this._notifyHotkeyChanged("");
+          return { success: true, message: `${label} hotkey cleared` };
+        }
+
+        const result = await hotkeyManager.registerSlot(slot, hotkey, callback, { atomic: true });
+        this.windowManager.reconcileNativeKeyListeners();
+        if (result.success) {
+          save(hotkey);
+          this._notifyHotkeyChanged(hotkey);
+          return { success: true, message: `${label} hotkey updated to: ${hotkey}` };
+        }
+
+        return { success: false, message: result.error };
+      });
+
+      ipcMain.handle(readChannel, async () => read());
+    }
+
     ipcMain.handle("acquire-recording-lock", async (_event, pipeline) => {
       if (this._activeRecordingPipeline && this._activeRecordingPipeline !== pipeline) {
         return { success: false, holder: this._activeRecordingPipeline };

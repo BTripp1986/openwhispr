@@ -2436,6 +2436,14 @@
       "translationHotkey": {
         "title": "Translation Hotkey",
         "description": "Dictate in any language — the pasted text comes out translated"
+      },
+      "rawDictationHotkey": {
+        "title": "Raw Dictation Hotkey",
+        "description": "Dictate and paste the transcript as spoken, skipping AI cleanup even when it is on"
+      },
+      "cleanedDictationHotkey": {
+        "title": "Cleaned Dictation Hotkey",
+        "description": "Dictate and always run AI cleanup before pasting, even when it is off"
       }
     },
     "permissions": {
@@ -3902,6 +3910,9 @@
       "cleanupFailed": {
         "title": "Cleanup failed",
         "description": "Original dictation pasted without AI cleanup."
+      },
+      "cleanupUnavailable": {
+        "title": "AI cleanup isn't set up"
       }
     },
     "mic": {

@@ -96,12 +96,16 @@ test("exports every Hyprland D-Bus toggle", async () => {
     manager.callbacks.meeting = () => calls.push("meeting");
     manager.callbacks.voiceAgent = () => calls.push("voiceAgent");
     manager.callbacks.translation = () => calls.push("translation");
+    manager.callbacks.rawDictation = () => calls.push("rawDictation");
+    manager.callbacks.cleanedDictation = () => calls.push("cleanedDictation");
 
     assert.deepEqual(Object.keys(exported.iface.methods).sort(), [
       "PttDown",
       "PttUp",
       "Toggle",
+      "ToggleCleanedDictation",
       "ToggleMeeting",
+      "ToggleRawDictation",
       "ToggleTranslation",
       "ToggleVoiceAgent",
     ]);
@@ -109,7 +113,16 @@ test("exports every Hyprland D-Bus toggle", async () => {
     exported.methods.ToggleMeeting();
     exported.methods.ToggleVoiceAgent();
     exported.methods.ToggleTranslation();
-    assert.deepEqual(calls, ["dictation", "meeting", "voiceAgent", "translation"]);
+    exported.methods.ToggleRawDictation();
+    exported.methods.ToggleCleanedDictation();
+    assert.deepEqual(calls, [
+      "dictation",
+      "meeting",
+      "voiceAgent",
+      "translation",
+      "rawDictation",
+      "cleanedDictation",
+    ]);
   });
 });
 

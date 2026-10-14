@@ -1271,6 +1271,10 @@ export default function SettingsPage({
   const setVoiceAgentKey = useSettingsStore((s) => s.setVoiceAgentKey);
   const translationKey = useSettingsStore((s) => s.translationKey);
   const setTranslationKey = useSettingsStore((s) => s.setTranslationKey);
+  const rawDictationKey = useSettingsStore((s) => s.rawDictationKey);
+  const setRawDictationKey = useSettingsStore((s) => s.setRawDictationKey);
+  const cleanedDictationKey = useSettingsStore((s) => s.cleanedDictationKey);
+  const setCleanedDictationKey = useSettingsStore((s) => s.setCleanedDictationKey);
 
   const settingsPolicyState = usePolicySnapshot();
   const agentAllowedByPolicy = isAgentAllowed(settingsPolicyState);
@@ -1505,10 +1509,12 @@ export default function SettingsPage({
           "settingsPage.general.meetingHotkey.title": meetingKey,
           "settingsPage.general.voiceAgentHotkey.title": voiceAgentKey,
           "settingsPage.general.translationHotkey.title": translationKey,
+          "settingsPage.general.rawDictationHotkey.title": rawDictationKey,
+          "settingsPage.general.cleanedDictationHotkey.title": cleanedDictationKey,
         },
         t
       ),
-    [meetingKey, voiceAgentKey, translationKey, t]
+    [meetingKey, voiceAgentKey, translationKey, rawDictationKey, cleanedDictationKey, t]
   );
 
   const validateMeetingHotkey = useCallback(
@@ -1519,10 +1525,12 @@ export default function SettingsPage({
           "settingsPage.general.hotkey.title": dictationKey,
           "settingsPage.general.voiceAgentHotkey.title": voiceAgentKey,
           "settingsPage.general.translationHotkey.title": translationKey,
+          "settingsPage.general.rawDictationHotkey.title": rawDictationKey,
+          "settingsPage.general.cleanedDictationHotkey.title": cleanedDictationKey,
         },
         t
       ),
-    [dictationKey, voiceAgentKey, translationKey, t]
+    [dictationKey, voiceAgentKey, translationKey, rawDictationKey, cleanedDictationKey, t]
   );
 
   const validateVoiceAgentHotkey = useCallback(
@@ -1533,10 +1541,12 @@ export default function SettingsPage({
           "settingsPage.general.hotkey.title": dictationKey,
           "settingsPage.general.meetingHotkey.title": meetingKey,
           "settingsPage.general.translationHotkey.title": translationKey,
+          "settingsPage.general.rawDictationHotkey.title": rawDictationKey,
+          "settingsPage.general.cleanedDictationHotkey.title": cleanedDictationKey,
         },
         t
       ),
-    [dictationKey, meetingKey, translationKey, t]
+    [dictationKey, meetingKey, translationKey, rawDictationKey, cleanedDictationKey, t]
   );
 
   const validateTranslationHotkey = useCallback(
@@ -1547,10 +1557,44 @@ export default function SettingsPage({
           "settingsPage.general.hotkey.title": dictationKey,
           "settingsPage.general.meetingHotkey.title": meetingKey,
           "settingsPage.general.voiceAgentHotkey.title": voiceAgentKey,
+          "settingsPage.general.rawDictationHotkey.title": rawDictationKey,
+          "settingsPage.general.cleanedDictationHotkey.title": cleanedDictationKey,
         },
         t
       ),
-    [dictationKey, meetingKey, voiceAgentKey, t]
+    [dictationKey, meetingKey, voiceAgentKey, rawDictationKey, cleanedDictationKey, t]
+  );
+
+  const validateRawDictationHotkey = useCallback(
+    (hotkey: string) =>
+      validateHotkeyForSlot(
+        hotkey,
+        {
+          "settingsPage.general.hotkey.title": dictationKey,
+          "settingsPage.general.meetingHotkey.title": meetingKey,
+          "settingsPage.general.voiceAgentHotkey.title": voiceAgentKey,
+          "settingsPage.general.translationHotkey.title": translationKey,
+          "settingsPage.general.cleanedDictationHotkey.title": cleanedDictationKey,
+        },
+        t
+      ),
+    [dictationKey, meetingKey, voiceAgentKey, translationKey, cleanedDictationKey, t]
+  );
+
+  const validateCleanedDictationHotkey = useCallback(
+    (hotkey: string) =>
+      validateHotkeyForSlot(
+        hotkey,
+        {
+          "settingsPage.general.hotkey.title": dictationKey,
+          "settingsPage.general.meetingHotkey.title": meetingKey,
+          "settingsPage.general.voiceAgentHotkey.title": voiceAgentKey,
+          "settingsPage.general.translationHotkey.title": translationKey,
+          "settingsPage.general.rawDictationHotkey.title": rawDictationKey,
+        },
+        t
+      ),
+    [dictationKey, meetingKey, voiceAgentKey, translationKey, rawDictationKey, t]
   );
 
   const {
@@ -4100,6 +4144,46 @@ EOF`,
                     onChange={(list) => commitAgentHotkey(setTranslationKey, list)}
                     onClear={() => commitAgentHotkey(setTranslationKey, "")}
                     validate={validateTranslationHotkey}
+                    disabled={isAgentHotkeyCommitting}
+                    maxHotkeys={isUsingNativeShortcut ? 1 : undefined}
+                  />
+                </SettingsPanelRow>
+              </SettingsPanel>
+            </div>
+
+            {/* Raw Dictation Hotkey */}
+            <div>
+              <SectionHeader
+                title={t("settingsPage.general.rawDictationHotkey.title")}
+                description={t("settingsPage.general.rawDictationHotkey.description")}
+              />
+              <SettingsPanel>
+                <SettingsPanelRow>
+                  <HotkeyListInput
+                    value={rawDictationKey}
+                    onChange={(list) => commitAgentHotkey(setRawDictationKey, list)}
+                    onClear={() => commitAgentHotkey(setRawDictationKey, "")}
+                    validate={validateRawDictationHotkey}
+                    disabled={isAgentHotkeyCommitting}
+                    maxHotkeys={isUsingNativeShortcut ? 1 : undefined}
+                  />
+                </SettingsPanelRow>
+              </SettingsPanel>
+            </div>
+
+            {/* Cleaned Dictation Hotkey */}
+            <div>
+              <SectionHeader
+                title={t("settingsPage.general.cleanedDictationHotkey.title")}
+                description={t("settingsPage.general.cleanedDictationHotkey.description")}
+              />
+              <SettingsPanel>
+                <SettingsPanelRow>
+                  <HotkeyListInput
+                    value={cleanedDictationKey}
+                    onChange={(list) => commitAgentHotkey(setCleanedDictationKey, list)}
+                    onClear={() => commitAgentHotkey(setCleanedDictationKey, "")}
+                    validate={validateCleanedDictationHotkey}
                     disabled={isAgentHotkeyCommitting}
                     maxHotkeys={isUsingNativeShortcut ? 1 : undefined}
                   />

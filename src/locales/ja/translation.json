@@ -2142,6 +2142,14 @@
       "translationHotkey": {
         "title": "翻訳ホットキー",
         "description": "どの言語で話しても、貼り付けられるテキストは翻訳済みになります"
+      },
+      "rawDictationHotkey": {
+        "title": "そのまま入力のホットキー",
+        "description": "AI クリーンアップが有効でもスキップし、話したままのテキストを貼り付けます"
+      },
+      "cleanedDictationHotkey": {
+        "title": "クリーンアップ入力のホットキー",
+        "description": "AI クリーンアップが無効でも、貼り付ける前に必ず実行します"
       }
     },
     "permissions": {
@@ -3732,6 +3740,9 @@
       "cleanupFailed": {
         "title": "クリーンアップに失敗しました",
         "description": "ディクテーションは AI クリーンアップなしで貼り付けられました。"
+      },
+      "cleanupUnavailable": {
+        "title": "AI クリーンアップが設定されていません"
       }
     },
     "mic": {

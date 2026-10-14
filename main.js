@@ -1338,6 +1338,44 @@ async function startApp() {
     hotkeyManager.notifyRestoreFailures(savedTranslationKey, result);
   }
 
+  // Set up the raw and cleaned dictation hotkeys. Both are ordinary dictation
+  // that picks its own cleanup for that one recording; neither changes the
+  // saved cleanup preference, and neither has a default binding.
+  const CLEANUP_MODE_SLOTS = [
+    {
+      slot: "rawDictation",
+      callbackField: "_rawDictationHotkeyCallback",
+      send: () => windowManager.sendToggleRawDictation(),
+      getSavedKey: () => environmentManager.getRawDictationKey?.() || "",
+      label: "raw dictation",
+    },
+    {
+      slot: "cleanedDictation",
+      callbackField: "_cleanedDictationHotkeyCallback",
+      send: () => windowManager.sendToggleCleanedDictation(),
+      getSavedKey: () => environmentManager.getCleanedDictationKey?.() || "",
+      label: "cleaned dictation",
+    },
+  ];
+
+  for (const { slot, callbackField, send, getSavedKey, label } of CLEANUP_MODE_SLOTS) {
+    const isPress = createHotkeyRepeatGate();
+    const callback = () => {
+      if (!isPress()) return;
+      send();
+    };
+    windowManager[callbackField] = callback;
+
+    const savedKey = getSavedKey();
+    if (savedKey) {
+      const result = await hotkeyManager.registerSlot(slot, savedKey, callback);
+      if (!result.success) {
+        debugLogger.warn(`Failed to restore ${label} hotkey`, { hotkey: savedKey }, "hotkey");
+      }
+      hotkeyManager.notifyRestoreFailures(savedKey, result);
+    }
+  }
+
   // Set up meeting mode hotkey
   const isMeetingPress = createHotkeyRepeatGate();
   const meetingHotkeyCallback = () => {
@@ -1560,13 +1598,31 @@ async function startApp() {
       const translationUsesGlobe = hotkeyManager
         .getSlotHotkeys("translation")
         .some(isGlobeLikeHotkey);
+      const rawDictationUsesGlobe = hotkeyManager
+        .getSlotHotkeys("rawDictation")
+        .some(isGlobeLikeHotkey);
+      const cleanedDictationUsesGlobe = hotkeyManager
+        .getSlotHotkeys("cleanedDictation")
+        .some(isGlobeLikeHotkey);
       if (voiceAgentUsesGlobe) {
         windowManager.sendToggleVoiceAgent();
       }
       if (translationUsesGlobe) {
         windowManager.sendToggleTranslation();
       }
-      if (!voiceAgentUsesGlobe && !translationUsesGlobe && !dictationUsesGlobe) {
+      if (rawDictationUsesGlobe) {
+        windowManager.sendToggleRawDictation();
+      }
+      if (cleanedDictationUsesGlobe) {
+        windowManager.sendToggleCleanedDictation();
+      }
+      if (
+        !voiceAgentUsesGlobe &&
+        !translationUsesGlobe &&
+        !rawDictationUsesGlobe &&
+        !cleanedDictationUsesGlobe &&
+        !dictationUsesGlobe
+      ) {
         debugLogger?.debug("[Globe] Ignored — hotkey is not GLOBE", { currentHotkey });
       }
     });
@@ -1647,6 +1703,12 @@ async function startApp() {
       if (hotkeyManager.slotHasHotkey("translation", modifier)) {
         windowManager.sendToggleTranslation();
       }
+      if (hotkeyManager.slotHasHotkey("rawDictation", modifier)) {
+        windowManager.sendToggleRawDictation();
+      }
+      if (hotkeyManager.slotHasHotkey("cleanedDictation", modifier)) {
+        windowManager.sendToggleCleanedDictation();
+      }
 
       if (!hotkeyManager.slotHasHotkey("dictation", modifier)) return;
       if (!isLiveWindow(windowManager.mainWindow)) return;
@@ -1712,7 +1774,13 @@ async function startApp() {
       }
     });
 
-    const MAC_NATIVE_HOTKEY_SLOTS = ["dictation", "voiceAgent", "translation"];
+    const MAC_NATIVE_HOTKEY_SLOTS = [
+      "dictation",
+      "voiceAgent",
+      "translation",
+      "rawDictation",
+      "cleanedDictation",
+    ];
     const syncMacNativeHotkeyConfiguration = () => {
       globeKeyManager.setConfiguration(
         hotkeyManager.getMacNativeListenerConfig(MAC_NATIVE_HOTKEY_SLOTS)
@@ -1734,6 +1802,12 @@ async function startApp() {
       }
       if (hotkeyManager.slotHasHotkey("translation", button)) {
         windowManager.sendToggleTranslation();
+      }
+      if (hotkeyManager.slotHasHotkey("rawDictation", button)) {
+        windowManager.sendToggleRawDictation();
+      }
+      if (hotkeyManager.slotHasHotkey("cleanedDictation", button)) {
+        windowManager.sendToggleCleanedDictation();
       }
 
       if (!hotkeyManager.slotHasHotkey("dictation", button)) return;
@@ -1884,6 +1958,10 @@ async function startApp() {
         windowManager.sendToggleVoiceAgent();
       } else if (hotkeyManager.slotHasHotkey("translation", key)) {
         windowManager.sendToggleTranslation();
+      } else if (hotkeyManager.slotHasHotkey("rawDictation", key)) {
+        windowManager.sendToggleRawDictation();
+      } else if (hotkeyManager.slotHasHotkey("cleanedDictation", key)) {
+        windowManager.sendToggleCleanedDictation();
       } else if (hotkeyManager.slotHasHotkey("meeting", key)) {
         windowManager.startManualMeeting({ activate: false });
       }
