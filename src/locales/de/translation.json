@@ -2436,6 +2436,14 @@
       "translationHotkey": {
         "title": "Übersetzungs-Hotkey",
         "description": "Diktiere in beliebiger Sprache — der eingefügte Text kommt übersetzt heraus"
+      },
+      "rawDictationHotkey": {
+        "title": "Hotkey für unbearbeitetes Diktat",
+        "description": "Diktiere und füge den Text so ein, wie er gesprochen wurde — ohne KI-Bereinigung, auch wenn sie aktiv ist"
+      },
+      "cleanedDictationHotkey": {
+        "title": "Hotkey für bereinigtes Diktat",
+        "description": "Diktiere und führe vor dem Einfügen immer die KI-Bereinigung aus, auch wenn sie aus ist"
       }
     },
     "permissions": {
@@ -3902,6 +3910,9 @@
       "cleanupFailed": {
         "title": "Bereinigung fehlgeschlagen",
         "description": "Dein Diktat wurde ohne KI-Bereinigung eingefügt."
+      },
+      "cleanupUnavailable": {
+        "title": "KI-Bereinigung ist nicht eingerichtet"
       }
     },
     "mic": {

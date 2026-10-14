@@ -2142,6 +2142,14 @@
       "translationHotkey": {
         "title": "Hotkey Traduzione",
         "description": "Detta in qualsiasi lingua: il testo incollato esce tradotto"
+      },
+      "rawDictationHotkey": {
+        "title": "Scorciatoia dettatura grezza",
+        "description": "Detta e incolla il testo così come l'hai detto, senza pulizia IA anche se è attiva"
+      },
+      "cleanedDictationHotkey": {
+        "title": "Scorciatoia dettatura pulita",
+        "description": "Detta ed esegui sempre la pulizia IA prima di incollare, anche se è disattivata"
       }
     },
     "permissions": {
@@ -3732,6 +3740,9 @@
       "cleanupFailed": {
         "title": "Pulizia non riuscita",
         "description": "La dettatura è stata incollata senza pulizia IA."
+      },
+      "cleanupUnavailable": {
+        "title": "La pulizia IA non è configurata"
       }
     },
     "mic": {

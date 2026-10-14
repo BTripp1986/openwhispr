@@ -1189,6 +1189,10 @@ export interface SettingsState
   setVoiceAgentKey: (key: string) => Promise<HotkeyRegistrationResult>;
   translationKey: string;
   setTranslationKey: (key: string) => Promise<HotkeyRegistrationResult>;
+  rawDictationKey: string;
+  setRawDictationKey: (key: string) => Promise<HotkeyRegistrationResult>;
+  cleanedDictationKey: string;
+  setCleanedDictationKey: (key: string) => Promise<HotkeyRegistrationResult>;
   setMeetingHotkeyLayoutMode: (mode: "side-panel" | "full-width") => void;
   setOnboardingUseCases: (useCases: string[]) => void;
   setOnboardingUseCaseNote: (note: string) => void;
@@ -1310,7 +1314,7 @@ function createNumberSetter(key: string) {
 // being persisted. Rolls back to the previous key if registration fails.
 // Resolves to false on failure so optimistic UIs (HotkeyListInput) can revert.
 function createRegisteredHotkeySetter(
-  key: "voiceAgentKey" | "translationKey",
+  key: "voiceAgentKey" | "translationKey" | "rawDictationKey" | "cleanedDictationKey",
   label: string,
   getRegisterFn: () => ((hotkey: string) => Promise<HotkeyRegistrationResult>) | undefined,
   fallbackSave?: (hotkey: string) => void
@@ -1595,6 +1599,8 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
   meetingKey: readString("meetingKey", ""),
   voiceAgentKey: readString("voiceAgentKey", ""),
   translationKey: readString("translationKey", ""),
+  rawDictationKey: readString("rawDictationKey", ""),
+  cleanedDictationKey: readString("cleanedDictationKey", ""),
   onboardingUseCases: readStringArray("onboardingUseCases", []),
   onboardingUseCaseNote: readString("onboardingUseCaseNote", ""),
   spokenLanguages: readStringArray("spokenLanguages", []),
@@ -2319,6 +2325,16 @@ export const useSettingsStore = create<SettingsState>()((set, get) => ({
     "translationKey",
     "translation hotkey",
     () => window.electronAPI?.updateTranslationHotkey
+  ),
+  setRawDictationKey: createRegisteredHotkeySetter(
+    "rawDictationKey",
+    "raw dictation hotkey",
+    () => window.electronAPI?.updateRawDictationHotkey
+  ),
+  setCleanedDictationKey: createRegisteredHotkeySetter(
+    "cleanedDictationKey",
+    "cleaned dictation hotkey",
+    () => window.electronAPI?.updateCleanedDictationHotkey
   ),
 
   setMeetingHotkeyLayoutMode: (mode: "side-panel" | "full-width") => {
@@ -3537,6 +3553,33 @@ export async function initializeSettings(): Promise<void> {
         { error: (err as Error).message },
         "settings"
       );
+    }
+
+    // Sync the raw and cleaned dictation hotkeys from the main process
+    for (const { stateKey, read, label } of [
+      {
+        stateKey: "rawDictationKey" as const,
+        read: () => window.electronAPI.getRawDictationKey?.(),
+        label: "raw dictation hotkey",
+      },
+      {
+        stateKey: "cleanedDictationKey" as const,
+        read: () => window.electronAPI.getCleanedDictationKey?.(),
+        label: "cleaned dictation hotkey",
+      },
+    ]) {
+      try {
+        const envKey = await read();
+        if (envKey && envKey !== state[stateKey]) {
+          createStringSetter(stateKey)(envKey);
+        }
+      } catch (err) {
+        logger.warn(
+          `Failed to sync ${label} on startup`,
+          { error: (err as Error).message },
+          "settings"
+        );
+      }
     }
 
     try {

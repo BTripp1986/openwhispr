@@ -70,6 +70,7 @@ export const useAudioRecording = (toast, options = {}) => {
   const lastStartOptionsRef = useRef({
     voiceAgentRequested: false,
     translationRequested: false,
+    cleanupOverride: null,
   });
   const {
     onToggle,
@@ -131,9 +132,13 @@ export const useAudioRecording = (toast, options = {}) => {
   }, []);
 
   const performStartRecording = useCallback(
-    async ({ voiceAgentRequested = false, translationRequested = false } = {}) => {
+    async ({
+      voiceAgentRequested = false,
+      translationRequested = false,
+      cleanupOverride = null,
+    } = {}) => {
       if (startLockRef.current) return false;
-      lastStartOptionsRef.current = { voiceAgentRequested, translationRequested };
+      lastStartOptionsRef.current = { voiceAgentRequested, translationRequested, cleanupOverride };
       startLockRef.current = true;
       stopRequestedDuringStartRef.current = false;
       pushForceStoppedRef.current = false;
@@ -184,6 +189,9 @@ export const useAudioRecording = (toast, options = {}) => {
         audioManagerRef.current.setVoiceAgentRequested(voiceAgentRequested);
         audioManagerRef.current.setAssistantSelectionContext(assistantSelectionContext);
         audioManagerRef.current.setTranslationRequested(translationRequested);
+        // Unconditional, so an ordinary dictation always clears a raw or
+        // cleaned mode left by the previous recording.
+        audioManagerRef.current.setCleanupOverride(cleanupOverride);
         // Covers the toggle path with freshly-set flags; the signature dedup
         // makes this a no-op when the prepare handler already reported the
         // same kind ahead of the flags being set.
@@ -972,6 +980,7 @@ export const useAudioRecording = (toast, options = {}) => {
     const handleToggle = async ({
       voiceAgentRequested = false,
       translationRequested = false,
+      cleanupOverride = null,
     } = {}) => {
       if (!audioManagerRef.current) return;
       const currentState = audioManagerRef.current.getState();
@@ -981,7 +990,7 @@ export const useAudioRecording = (toast, options = {}) => {
       if (startLockRef.current || currentState.isRecording) {
         await performStopRecording();
       } else if (canStartDictation(currentState)) {
-        await performStartRecording({ voiceAgentRequested, translationRequested });
+        await performStartRecording({ voiceAgentRequested, translationRequested, cleanupOverride });
       }
     };
 
@@ -1005,6 +1014,19 @@ export const useAudioRecording = (toast, options = {}) => {
 
     const disposeTranslationToggle = window.electronAPI.onToggleTranslation?.(() => {
       handleToggle({ translationRequested: true });
+      onToggle?.();
+    });
+
+    // The raw and cleaned dictation hotkeys pick this recording's cleanup and
+    // nothing else: still ordinary dictation, never the assistant, and the
+    // saved cleanup preference is left alone.
+    const disposeRawDictationToggle = window.electronAPI.onToggleRawDictation?.(() => {
+      handleToggle({ cleanupOverride: "raw" });
+      onToggle?.();
+    });
+
+    const disposeCleanedDictationToggle = window.electronAPI.onToggleCleanedDictation?.(() => {
+      handleToggle({ cleanupOverride: "cleaned" });
       onToggle?.();
     });
 
@@ -1055,6 +1077,8 @@ export const useAudioRecording = (toast, options = {}) => {
       disposeToggle?.();
       disposeVoiceAgentToggle?.();
       disposeTranslationToggle?.();
+      disposeRawDictationToggle?.();
+      disposeCleanedDictationToggle?.();
       disposeStart?.();
       disposePrepare?.();
       disposeCancelPreparation?.();
@@ -1132,9 +1156,10 @@ export const useAudioRecording = (toast, options = {}) => {
   const toggleListening = async ({
     voiceAgentRequested = false,
     translationRequested = false,
+    cleanupOverride = null,
   } = {}) => {
     if (!isRecording && !isProcessing && !isPasting) {
-      await performStartRecording({ voiceAgentRequested, translationRequested });
+      await performStartRecording({ voiceAgentRequested, translationRequested, cleanupOverride });
     } else if (isRecording) {
       await performStopRecording();
     }

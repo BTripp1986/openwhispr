@@ -104,6 +104,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onToggleDictation: registerListener("toggle-dictation", (callback) => () => callback()),
   onToggleVoiceAgent: registerListener("toggle-voice-agent", (callback) => () => callback()),
   onToggleTranslation: registerListener("toggle-translation", (callback) => () => callback()),
+  onToggleRawDictation: registerListener("toggle-raw-dictation", (callback) => () => callback()),
+  onToggleCleanedDictation: registerListener(
+    "toggle-cleaned-dictation",
+    (callback) => () => callback()
+  ),
   onOpenAssistantPanel: registerListener("open-assistant-panel", (callback) => () => callback()),
   onStartDictation: registerListener("start-dictation", (callback) => () => callback()),
   onStopDictation: registerListener("stop-dictation", (callback) => () => callback()),
@@ -1090,6 +1095,11 @@ contextBridge.exposeInMainWorld("electronAPI", {
   getVoiceAgentKey: () => ipcRenderer.invoke("get-voice-agent-key"),
   updateTranslationHotkey: (hotkey) => ipcRenderer.invoke("update-translation-hotkey", hotkey),
   getTranslationKey: () => ipcRenderer.invoke("get-translation-key"),
+  updateRawDictationHotkey: (hotkey) => ipcRenderer.invoke("update-raw-dictation-hotkey", hotkey),
+  getRawDictationKey: () => ipcRenderer.invoke("get-raw-dictation-key"),
+  updateCleanedDictationHotkey: (hotkey) =>
+    ipcRenderer.invoke("update-cleaned-dictation-hotkey", hotkey),
+  getCleanedDictationKey: () => ipcRenderer.invoke("get-cleaned-dictation-key"),
   onPreviewText: registerListener("preview-text", (callback) => (_event, text) => callback(text)),
   onPreviewAppend: registerListener(
     "preview-append",

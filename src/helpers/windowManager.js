@@ -1164,6 +1164,16 @@ class WindowManager {
     this._sendDictationToggle("toggle-translation", "translation");
   }
 
+  // Raw and cleaned dictation are ordinary dictation that pick their own cleanup,
+  // so they report the dictation input kind and inherit every gate it has.
+  sendToggleRawDictation() {
+    this._sendDictationToggle("toggle-raw-dictation", DICTATION_INPUT_KIND.DICTATION);
+  }
+
+  sendToggleCleanedDictation() {
+    this._sendDictationToggle("toggle-cleaned-dictation", DICTATION_INPUT_KIND.DICTATION);
+  }
+
   // The tray's Ask assistant. Only the renderer can open the panel, and only it
   // knows the policy and recording state the pill menu gates the item on, so it
   // decides: nothing is shown or created here, and an accepted command surfaces
