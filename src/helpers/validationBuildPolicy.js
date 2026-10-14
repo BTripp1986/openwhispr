@@ -163,6 +163,47 @@ function shouldSkipLegacyCacheMigration({ isValidationBuild } = {}) {
   return isValidationBuild === true;
 }
 
+// Local isolation says nothing about the cloud. executeAccountDeletion
+// (src/lib/accountDeletionFlow.ts) calls deleteRemoteAccount() FIRST, and
+// src/lib/accountDeletionRequest.ts issues a real DELETE
+// /api/auth/delete-account — so "Delete account" in a test build would destroy
+// the tester's live OpenWhispr account, and the isolated profile would not save
+// them. Acceptance for a BYOK OpenAI setup runs signed out (the onboarding
+// flow supports authPath "guest" with setupMode "byok"), which keeps the button
+// out of reach, but "do not press that" is weak protection for something
+// irreversible.
+//
+// Renderer cloud calls all travel through main's `cloud-api-request` IPC
+// (src/helpers/cloudApiRequest.js), which is a marker-exact chokepoint needing
+// no renderer change and no new IPC contract. Only the account-destroying call
+// is refused: sync, transcription and the rest stay usable if a tester does
+// sign in.
+const VALIDATION_BLOCKED_CLOUD_CALLS = Object.freeze([
+  Object.freeze({ method: "DELETE", path: "/api/auth/delete-account" }),
+]);
+
+const VALIDATION_BLOCKED_CLOUD_CALL_REFUSAL = Object.freeze({
+  success: false,
+  code: "VALIDATION_BUILD_BLOCKED_CLOUD_CALL",
+  error:
+    "This is a validation test build and will not delete your OpenWhispr account. Deleting an account is permanent and affects the real cloud account, not just this test profile. Use your normal OpenWhispr install if you actually mean to delete it.",
+});
+
+function refuseValidationDestructiveCloudCall({ isValidationBuild, method, path } = {}) {
+  if (isValidationBuild !== true) return null;
+  const normalizedMethod = String(method || "GET").toUpperCase();
+  // Compare the path alone: a query string or a trailing slash must not slip
+  // the same call past the list.
+  const normalizedPath =
+    String(path || "")
+      .split(/[?#]/)[0]
+      .replace(/\/+$/, "") || "/";
+  const blocked = VALIDATION_BLOCKED_CLOUD_CALLS.some(
+    (call) => call.method === normalizedMethod && call.path === normalizedPath
+  );
+  return blocked ? VALIDATION_BLOCKED_CLOUD_CALL_REFUSAL : null;
+}
+
 module.exports = {
   IS_VALIDATION_BUILD,
   resolveValidationChannel,
@@ -176,4 +217,7 @@ module.exports = {
   SHARED_DOWNLOAD_DELETE_REFUSAL,
   shouldIgnoreCacheRootOverride,
   shouldSkipLegacyCacheMigration,
+  refuseValidationDestructiveCloudCall,
+  VALIDATION_BLOCKED_CLOUD_CALLS,
+  VALIDATION_BLOCKED_CLOUD_CALL_REFUSAL,
 };

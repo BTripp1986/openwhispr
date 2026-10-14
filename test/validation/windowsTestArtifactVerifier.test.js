@@ -75,6 +75,12 @@ function buildFixture(mutate = () => {}) {
       "const name = resolveCliBridgeFileName({});\n",
     "src/helpers/qdrantManager.js": "const d = resolveQdrantDataDirName({});\n",
     "src/helpers/secretCrypto.js": "const SERVICE = resolveKeyringService({});\n",
+    "src/helpers/cloudApiRequest.js": [
+      "const r = refuseValidationDestructiveCloudCall({ method, path });",
+      "if (r) return r;",
+      "const res = await proxyFetch(requestUrl, fetchOptions);",
+      "",
+    ].join("\n"),
     "src/helpers/modelDirUtils.js":
       "const a = shouldIgnoreCacheRootOverride({});\nconst b = shouldSkipLegacyCacheMigration({});\n",
     "src/helpers/ipcHandlers.js": [
@@ -163,7 +169,7 @@ async function verify(mutate) {
 test("a well-formed validation artifact passes every static check", async () => {
   const { code, stdout } = await verify();
   assert.equal(code, 0, stdout);
-  assert.match(stdout, /20\/20 checks passed/);
+  assert.match(stdout, /21\/21 checks passed/);
   assert.match(stdout, /OpenWhispr\.exe sha256: [0-9a-f]{64}/);
   assert.doesNotMatch(stdout, /^FAIL/m);
 });
@@ -363,4 +369,25 @@ test("a packaged asar that can migrate the production model cache fails the gate
   });
   assert.equal(code, 1);
   assert.match(stdout, /renames the production install's model directories/);
+});
+
+test("an unguarded cloud handler in the packaged asar fails the gate", async () => {
+  const { code, stdout } = await verify(({ app }) => {
+    app["src/helpers/cloudApiRequest.js"] =
+      "const res = await proxyFetch(requestUrl, fetchOptions);\n";
+  });
+  assert.equal(code, 1);
+  assert.match(stdout, /issues a real DELETE \/api\/auth\/delete-account/);
+});
+
+test("a cloud guard placed after the request fails the gate", async () => {
+  const { code, stdout } = await verify(({ app }) => {
+    app["src/helpers/cloudApiRequest.js"] = [
+      "const res = await proxyFetch(requestUrl, fetchOptions);",
+      "const r = refuseValidationDestructiveCloudCall({ method, path });",
+      "",
+    ].join("\n");
+  });
+  assert.equal(code, 1);
+  assert.match(stdout, /no longer precedes the request/);
 });

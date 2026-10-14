@@ -231,6 +231,21 @@ check("packaged build cannot delete or migrate the production model cache", () =
   return `${routes.length} delete routes refused, cache migration disabled`;
 });
 
+check("packaged build cannot delete the tester's real cloud account", () => {
+  const cloud = readAsarFile(asarPath, "src/helpers/cloudApiRequest.js");
+  must(
+    /refuseValidationDestructiveCloudCall\(/.test(cloud),
+    'cloudApiRequest.js in the asar no longer guards destructive cloud calls — "Delete account" issues a real DELETE /api/auth/delete-account, which an isolated profile does not protect'
+  );
+  const guardIndex = cloud.indexOf("refuseValidationDestructiveCloudCall({");
+  const fetchIndex = cloud.indexOf("proxyFetch(");
+  must(
+    guardIndex > 0 && fetchIndex > 0 && guardIndex < fetchIndex,
+    "the destructive-cloud-call guard no longer precedes the request in the packaged handler"
+  );
+  return "DELETE /api/auth/delete-account refused before the request";
+});
+
 check("asar is readable and carries the expected entry points", () => {
   const entries = asarEntries(asarPath);
   for (const expected of ["/main.js", "/preload.js", "/package.json", "/src/updater.js"]) {

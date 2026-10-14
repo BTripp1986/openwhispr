@@ -26,11 +26,41 @@ What it will NOT touch
   What this build cannot do is remove or move them:
     - every "Delete model" / "Delete all models" button in this build refuses
       outright and tells you why;
-    - "Reset app data" and "Delete account" still erase THIS BUILD's own data
-      (its settings, history, notes and saved keys in the test profile) - that
-      part works normally - but they keep the shared model cache and say so;
+    - "Reset app data" still erases THIS BUILD's own data (its settings,
+      history, notes and saved keys in the test profile) - that part works
+      normally - but it keeps the shared model cache and says so;
     - it never relocates the cache.
   To actually delete a model, use your normal OpenWhispr install.
+
+What is NOT sandboxed: your OpenWhispr cloud account
+----------------------------------------------------
+The separate profile isolates data on THIS PC. It does not sandbox anything
+server-side. If you sign in, this build talks to the same real OpenWhispr
+account as your normal install, and anything it syncs is your actual data.
+
+"Delete account" is a permanent, server-side deletion of your real account -
+not a local reset. This build refuses that one call so a stray click cannot
+destroy your account, but do not rely on that: there is no reason to sign in
+for this test at all.
+
+So: run this test SIGNED OUT, using your own OpenAI key. That is the
+configuration under test - raw vs cleaned dictation through your own OpenAI
+key - and it needs no OpenWhispr account. The exact buttons:
+
+  1. On the sign-in screen, click "Continue without an account".
+  2. Work through the microphone and hotkey steps.
+  3. On the setup screen, click "Show More Options", then choose
+     "API Provider" ("Use your own API key.").
+  4. Enter your OpenAI key there.
+
+Then set BOTH halves of the pipeline in Settings - they are separate, and this
+test needs both:
+
+  - Settings -> "Speech to Text": provider OpenAI, and pick the transcription
+    model. This is what the raw hotkey exercises.
+  - Settings -> "AI Text Enhancement": the Dictation Cleanup scope, provider
+    OpenAI, and pick the cleanup model and prompt. This is the extra pass the
+    cleaned hotkey forces and the raw hotkey must skip.
 
 How to run it
 -------------
@@ -41,9 +71,9 @@ How to run it
    Starting OpenWhispr.exe directly works too - the build pins its own isolated
    profile - but the launchers print where that profile is.
 3. SmartScreen: "More info" -> "Run anyway". It is unsigned on purpose.
-4. Set up the test profile from scratch: microphone permission, then your
-   OpenAI key and models in Settings. Type them into the app's masked fields.
-   Never paste a key into a chat, a log or a command line.
+4. Set up the test profile from scratch, following the signed-out steps above.
+   Type the key into the app's masked field. Never paste a key into a chat, a
+   log or a command line.
 
 No Node, npm, git or build tools are needed.
 

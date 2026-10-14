@@ -1,4 +1,9 @@
 const { withPolicyRequestHeaders } = require("./policyRequestHeaders");
+// TEST-ONLY (validation branch): see VALIDATION_BUILD.md.
+const {
+  IS_VALIDATION_BUILD,
+  refuseValidationDestructiveCloudCall,
+} = require("./validationBuildPolicy");
 
 class AuthContextError extends Error {
   constructor(message, code = "AUTH_CONTEXT_CHANGED") {
@@ -79,6 +84,22 @@ function createCloudApiRequestHandler({
 
       if (typeof opts?.path !== "string" || !opts.path.startsWith("/")) {
         return { success: false, error: "Invalid API path" };
+      }
+
+      // TEST-ONLY (validation branch): a handed-out test build must not be able
+      // to delete the tester's real OpenWhispr account. Every renderer cloud
+      // call comes through here, so this is the one place that needs it.
+      // No-op without the extraMetadata marker.
+      const validationRefusal = refuseValidationDestructiveCloudCall({
+        isValidationBuild: IS_VALIDATION_BUILD,
+        method: opts.method,
+        path: opts.path,
+      });
+      if (validationRefusal) {
+        logger?.warn?.("Refused a destructive cloud call in a validation build", {
+          path: opts.path,
+        });
+        return validationRefusal;
       }
       const targetUrl = new URL(opts.path, apiUrl);
       if (targetUrl.origin !== new URL(apiUrl).origin) {
