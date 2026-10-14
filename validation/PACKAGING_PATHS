@@ -12,6 +12,10 @@ electron-builder.validation-win.json
 main.js
 scripts/validation/
 src/helpers/cliBridge.js
+src/helpers/ipcHandlers.js
+src/helpers/modelDirUtils.js
+src/helpers/qdrantManager.js
+src/helpers/secretCrypto.js
 src/helpers/validationBuildPolicy.js
 src/updater.js
 test/validation/

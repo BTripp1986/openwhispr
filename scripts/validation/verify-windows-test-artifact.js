@@ -11,6 +11,7 @@
 const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
+const { toAsarPath, fromAsarEntry, asarBasename } = require("./asarPaths");
 
 const root = path.resolve(process.argv[2] || path.join("dist", "win-unpacked"));
 const results = [];
@@ -32,7 +33,12 @@ function must(condition, message) {
 
 function readAsarFile(asarPath, filePath) {
   const { extractFile } = require("@electron/asar");
-  return extractFile(asarPath, filePath).toString("utf8");
+  return extractFile(asarPath, toAsarPath(filePath)).toString("utf8");
+}
+
+function asarEntries(asarPath) {
+  const { listPackage } = require("@electron/asar");
+  return listPackage(asarPath).map((entry) => fromAsarEntry(entry));
 }
 
 // PE data directory entry 4 is the Certificate Table: a non-zero size means the
@@ -146,9 +152,87 @@ check("packaged cliBridge.js scopes its token file away from production", () => 
   return "channel-scoped";
 });
 
+check("packaged build isolates its Qdrant index, vault entry and shared caches", () => {
+  const qdrant = readAsarFile(asarPath, "src/helpers/qdrantManager.js");
+  must(
+    /resolveQdrantDataDirName\(/.test(qdrant),
+    "qdrantManager.js in the asar still keys its storage directory on NODE_ENV, so a packaged test build would open the production index"
+  );
+
+  const secrets = readAsarFile(asarPath, "src/helpers/secretCrypto.js");
+  must(
+    /resolveKeyringService\(/.test(secrets),
+    "secretCrypto.js in the asar still uses the cross-channel keyring service, so a test build would read the production master key"
+  );
+
+  const handlers = readAsarFile(asarPath, "src/helpers/ipcHandlers.js");
+  must(
+    /const eraseSharedCaches = !shouldSkipSharedDeviceCaches\(/.test(handlers),
+    "ipcHandlers.js in the asar no longer guards the device-erasure path, so Reset app data would delete the production install's model caches"
+  );
+  const unguarded = [
+    [/if \(eraseSharedCaches && fs\.existsSync\(whisperDir\)\)/, "whisper models"],
+    [
+      /if \(eraseSharedCaches\) await this\.parakeetManager\?\.deleteAllParakeetModels\(\)/,
+      "Parakeet models",
+    ],
+    [
+      /if \(eraseSharedCaches\) await this\.diarizationManager\?\.deleteModels\(\)/,
+      "diarization models",
+    ],
+    [/if \(eraseSharedCaches\) await modelManager\.deleteAllModels\(\)/, "LLM models"],
+    [/for \(const cacheName of eraseSharedCaches/, "the ~/.cache/openwhispr loop"],
+  ]
+    .filter(([pattern]) => !pattern.test(handlers))
+    .map(([, label]) => label);
+  must(unguarded.length === 0, `unguarded shared-cache deletions: ${unguarded.join(", ")}`);
+
+  return "qdrant-data-validation, OpenWhispr-validation vault, erase guarded";
+});
+
+check("packaged build cannot delete or migrate the production model cache", () => {
+  const handlers = readAsarFile(asarPath, "src/helpers/ipcHandlers.js");
+  must(
+    /const sharedDownloadDeleteRefusal = refuseSharedDownloadDelete\(/.test(handlers),
+    "ipcHandlers.js in the asar no longer builds the shared-download delete refusal"
+  );
+  const routes = [
+    "delete-whisper-model",
+    "delete-all-whisper-models",
+    "delete-parakeet-model",
+    "delete-all-parakeet-models",
+    "delete-diarization-models",
+    "model-delete",
+    "model-delete-all",
+  ];
+  const unguarded = routes.filter((route) => {
+    const handler = handlers.match(
+      new RegExp(`ipcMain\\.handle\\("${route}",[^\\n]*\\n\\s*([^\\n]*)`)
+    );
+    return (
+      !handler ||
+      !/if \(sharedDownloadDeleteRefusal\) return sharedDownloadDeleteRefusal;/.test(handler[1])
+    );
+  });
+  must(
+    unguarded.length === 0,
+    `delete routes that would remove the production install's shared models: ${unguarded.join(", ")}`
+  );
+
+  const dirs = readAsarFile(asarPath, "src/helpers/modelDirUtils.js");
+  must(
+    /shouldSkipLegacyCacheMigration\(/.test(dirs),
+    "modelDirUtils.js in the asar can still run migrateLegacyModelDirs, which renames the production install's model directories"
+  );
+  must(
+    /shouldIgnoreCacheRootOverride\(/.test(dirs),
+    "modelDirUtils.js in the asar still honours an inherited OPENWHISPR_CACHE_ROOT"
+  );
+  return `${routes.length} delete routes refused, cache migration disabled`;
+});
+
 check("asar is readable and carries the expected entry points", () => {
-  const { listPackage } = require("@electron/asar");
-  const entries = listPackage(asarPath);
+  const entries = asarEntries(asarPath);
   for (const expected of ["/main.js", "/preload.js", "/package.json", "/src/updater.js"]) {
     must(entries.includes(expected), `asar is missing ${expected}`);
   }
@@ -222,11 +306,10 @@ check("no real .env packaged anywhere in the artifact", () => {
 });
 
 check("no real .env inside app.asar", () => {
-  const { listPackage } = require("@electron/asar");
-  const entries = listPackage(asarPath).filter((entry) => isEnvFile(path.basename(entry)));
-  const hits = entries.filter((entry) => !ENV_TEMPLATES.has(path.basename(entry)));
+  const entries = asarEntries(asarPath).filter((entry) => isEnvFile(asarBasename(entry)));
+  const hits = entries.filter((entry) => !ENV_TEMPLATES.has(asarBasename(entry)));
   must(hits.length === 0, `asar contains: ${hits.join(", ")}`);
-  const templates = entries.filter((entry) => ENV_TEMPLATES.has(path.basename(entry)));
+  const templates = entries.filter((entry) => ENV_TEMPLATES.has(asarBasename(entry)));
   return templates.length === 0 ? "none" : `none (templates ignored: ${templates.join(", ")})`;
 });
 

@@ -74,10 +74,106 @@ function resolveCliBridgeFileName({ isValidationBuild, channel } = {}) {
   return `cli-bridge-${suffix.replace(/[^a-z0-9-]/g, "")}.json`;
 }
 
+// Qdrant's storage directory (qdrantManager.js) lives under
+// ~/.cache/openwhispr and is keyed on NODE_ENV, not on the channel, so a
+// packaged validation build would open the production `qdrant-data` even with
+// userData isolated. Unlike the model downloads beside it this directory is
+// mutable, written by a sidecar, and two processes must not open it at once.
+// Its sidecar PID file already lives under userData, so the channel pin covers
+// that part.
+function resolveQdrantDataDirName({ isValidationBuild, nodeEnv } = {}) {
+  if (isValidationBuild === true) return "qdrant-data-validation";
+  return nodeEnv === "development" ? "qdrant-data-dev" : "qdrant-data";
+}
+
+// The OS credential vault entry (secretCrypto.js) is one constant
+// service/account pair for every channel, so a validation build would read —
+// and, if production had never created one, define — the production master
+// key. Nothing deletes that entry (clearAllPersistedData only removes
+// userData/.env and userData/secure-keys), so this is about not touching
+// someone else's vault rather than about losing it.
+function resolveKeyringService({ isValidationBuild, baseService } = {}) {
+  const base = typeof baseService === "string" && baseService ? baseService : "OpenWhispr";
+  return isValidationBuild === true ? `${base}-validation` : base;
+}
+
+// The device-erasure path (ipcHandlers.js `cleanup-app` and
+// `delete-account-data` with `erasingDevice`) deletes the whisper, Parakeet,
+// diarization, LLM, embedding and yt-dlp caches under ~/.cache/openwhispr.
+// Those are deliberately SHARED with the production install so a tester does
+// not re-download gigabytes, which means a validation build must never erase
+// them — a stray "Reset app data" click would otherwise wipe the production
+// app's models. The validation build's own Qdrant directory is still removed.
+function shouldSkipSharedDeviceCaches({ isValidationBuild } = {}) {
+  return isValidationBuild === true;
+}
+
+// The model/binary delete IPC routes (ipcHandlers.js: delete-whisper-model,
+// delete-all-whisper-models, delete-parakeet-model,
+// delete-all-parakeet-models, delete-diarization-models, model-delete,
+// model-delete-all) all remove files from the SHARED ~/.cache/openwhispr
+// downloads, individual variants included. Guarding only the device-erasure
+// path would still leave a tester one click in the model manager away from
+// deleting the production install's models, so a validation build refuses
+// every one of them and says why.
+//
+// Rejected alternative: isolating the cache with OPENWHISPR_CACHE_ROOT.
+// modelDirUtils.getCacheRoot() calls migrateLegacyModelDirs(homeCache,
+// targetRoot) whenever the resolved root differs from ~/.cache/openwhispr,
+// which `renameSync`s the production model subdirectories into the new root —
+// so pointing a test build at its own cache root would MOVE the production
+// install's models rather than isolate them. The GPU binary packs need no
+// guard: GpuBinaryManager installs them under userData/bin, which the channel
+// pin already isolates.
+const SHARED_DOWNLOAD_DELETE_REFUSAL = Object.freeze({
+  success: false,
+  code: "VALIDATION_BUILD_SHARED_DOWNLOADS",
+  error:
+    "This is a validation test build. Its downloaded speech and AI models are shared with the installed OpenWhispr, so it will not delete them. Remove them from your normal OpenWhispr install instead.",
+});
+
+// Returns the refusal to hand straight back from a delete route, or null when
+// the route should run as it always has.
+function refuseSharedDownloadDelete({ isValidationBuild } = {}) {
+  return isValidationBuild === true ? SHARED_DOWNLOAD_DELETE_REFUSAL : null;
+}
+
+// modelDirUtils.getCacheRoot() resolves a cache root and then, whenever that
+// root differs from ~/.cache/openwhispr, calls migrateLegacyModelDirs(), which
+// `renameSync`s the production install's whisper-models, parakeet-models,
+// diarization-models and models directories into it. That runs at startup, on
+// the first model path lookup, and reaches the production directories under
+// two conditions a handed-out artifact does not control:
+//
+//   1. an inherited OPENWHISPR_CACHE_ROOT (the same class of leak as
+//      OPENWHISPR_PROTOCOL), and
+//   2. the automatic Windows non-ASCII fallback, when the profile path is not
+//      printable ASCII and the root becomes C:\ProgramData\OpenWhispr\cache.
+//
+// Guarding the delete routes does not close this: a migration is a rename, not
+// a delete. So a validation build refuses the env override and never performs
+// the migration. It still resolves the same root production would, so it finds
+// models production already moved; if production has not migrated yet, the
+// test build simply re-downloads into that root rather than moving anything.
+function shouldIgnoreCacheRootOverride({ isValidationBuild } = {}) {
+  return isValidationBuild === true;
+}
+
+function shouldSkipLegacyCacheMigration({ isValidationBuild } = {}) {
+  return isValidationBuild === true;
+}
+
 module.exports = {
   IS_VALIDATION_BUILD,
   resolveValidationChannel,
   areUpdatesDisabled,
   shouldIgnoreProtocolOverride,
   resolveCliBridgeFileName,
+  resolveQdrantDataDirName,
+  resolveKeyringService,
+  shouldSkipSharedDeviceCaches,
+  refuseSharedDownloadDelete,
+  SHARED_DOWNLOAD_DELETE_REFUSAL,
+  shouldIgnoreCacheRootOverride,
+  shouldSkipLegacyCacheMigration,
 };

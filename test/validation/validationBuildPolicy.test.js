@@ -272,3 +272,120 @@ test("cliBridge.js resolves its file name through the validation policy", () => 
     "the hardcoded production bridge path is back"
   );
 });
+
+// --- shared cache and credential-vault isolation ----------------------------
+
+const {
+  resolveQdrantDataDirName,
+  resolveKeyringService,
+  shouldSkipSharedDeviceCaches,
+} = require("../../src/helpers/validationBuildPolicy");
+
+test("an ordinary build keeps the NODE_ENV-keyed Qdrant directory", () => {
+  assert.equal(
+    resolveQdrantDataDirName({ isValidationBuild: false, nodeEnv: "development" }),
+    "qdrant-data-dev"
+  );
+  for (const nodeEnv of [undefined, "", "production", "test", "staging"]) {
+    assert.equal(
+      resolveQdrantDataDirName({ isValidationBuild: false, nodeEnv }),
+      "qdrant-data",
+      `NODE_ENV=${JSON.stringify(nodeEnv)}`
+    );
+  }
+  assert.equal(resolveQdrantDataDirName(), "qdrant-data", "no arguments");
+});
+
+test("a validation build never opens the production Qdrant directory", () => {
+  for (const nodeEnv of [undefined, "", "production", "test", "development"]) {
+    const dir = resolveQdrantDataDirName({ isValidationBuild: true, nodeEnv });
+    assert.equal(dir, "qdrant-data-validation", `NODE_ENV=${JSON.stringify(nodeEnv)}`);
+    assert.notEqual(dir, "qdrant-data");
+    assert.notEqual(dir, "qdrant-data-dev");
+  }
+});
+
+test("qdrantManager resolves its storage directory through the policy", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const source = fs.readFileSync(
+    path.resolve(__dirname, "..", "..", "src", "helpers", "qdrantManager.js"),
+    "utf8"
+  );
+  assert.match(source, /resolveQdrantDataDirName\(/);
+  assert.doesNotMatch(
+    source,
+    /process\.env\.NODE_ENV === "development" \? "qdrant-data-dev" : "qdrant-data"/,
+    "the NODE_ENV-keyed storage directory is back"
+  );
+});
+
+test("an ordinary build keeps the production keyring service", () => {
+  assert.equal(
+    resolveKeyringService({ isValidationBuild: false, baseService: "OpenWhispr" }),
+    "OpenWhispr"
+  );
+  assert.equal(resolveKeyringService(), "OpenWhispr", "defaults to the production service");
+});
+
+test("a validation build uses its own credential-vault service", () => {
+  const service = resolveKeyringService({ isValidationBuild: true, baseService: "OpenWhispr" });
+  assert.equal(service, "OpenWhispr-validation");
+  assert.notEqual(service, "OpenWhispr");
+});
+
+test("secretCrypto derives its keyring service through the policy", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const source = fs.readFileSync(
+    path.resolve(__dirname, "..", "..", "src", "helpers", "secretCrypto.js"),
+    "utf8"
+  );
+  assert.match(source, /resolveKeyringService\(/);
+  assert.doesNotMatch(
+    source,
+    /^const SERVICE = "OpenWhispr";$/m,
+    "the hardcoded cross-channel keyring service is back"
+  );
+});
+
+test("an ordinary build still erases the shared device caches", () => {
+  assert.equal(shouldSkipSharedDeviceCaches({ isValidationBuild: false }), false);
+  assert.equal(shouldSkipSharedDeviceCaches(), false);
+});
+
+test("a validation build keeps the shared device caches", () => {
+  assert.equal(shouldSkipSharedDeviceCaches({ isValidationBuild: true }), true);
+});
+
+test("the device-erasure path guards every shared cache deletion", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const source = fs.readFileSync(
+    path.resolve(__dirname, "..", "..", "src", "helpers", "ipcHandlers.js"),
+    "utf8"
+  );
+
+  // The guard is declared once, from the policy, and the user is told the
+  // caches were kept rather than it happening silently.
+  assert.match(source, /const eraseSharedCaches = !shouldSkipSharedDeviceCaches\(/);
+  assert.match(source, /Shared model caches under ~\/\.cache\/openwhispr were kept/);
+
+  // Every shared deletion in that handler sits behind the guard.
+  for (const guarded of [
+    /if \(eraseSharedCaches && fs\.existsSync\(whisperDir\)\)/,
+    /if \(eraseSharedCaches\) await this\.parakeetManager\?\.deleteAllParakeetModels\(\)/,
+    /if \(eraseSharedCaches\) await this\.diarizationManager\?\.deleteModels\(\)/,
+    /if \(eraseSharedCaches\) await modelManager\.deleteAllModels\(\)/,
+  ]) {
+    assert.match(source, guarded, `unguarded shared-cache deletion: ${guarded}`);
+  }
+
+  // The home-cache loop erases the production names only when allowed, and
+  // otherwise still removes the validation build's own Qdrant directory.
+  assert.match(
+    source,
+    /for \(const cacheName of eraseSharedCaches\s*\n?\s*\? \["embedding-models", "qdrant-data", "qdrant-data-dev", "yt-dlp"\]\s*\n?\s*: \[resolveQdrantDataDirName\(/,
+    "the ~/.cache/openwhispr deletion loop is no longer guarded"
+  );
+});

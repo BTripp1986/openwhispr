@@ -47,12 +47,50 @@ Two further leaks only showed up once the channel was pinned:
    the pinned-channel test build register the production `openwhispr://`
    handler and point it at the throwaway executable.
 
-5. **`~/.openwhispr/cli-bridge.json`** (`src/helpers/cliBridge.js`) is the one
-   piece of app state outside userData with no channel in its name. The bridge
-   starts unconditionally on every launch, overwrites that file with its own
-   port and bearer token, and **deletes it on quit** — so an unscoped test build
-   would redirect the tester's `openwhispr` CLI at itself and then remove the
+5. **`~/.openwhispr/cli-bridge.json`** (`src/helpers/cliBridge.js`) is app
+   state outside userData with no channel in its name. The bridge starts
+   unconditionally on every launch, overwrites that file with its own port and
+   bearer token, and **deletes it on quit** — so an unscoped test build would
+   redirect the tester's `openwhispr` CLI at itself and then remove the
    production entry.
+
+6. **Qdrant's storage directory** (`src/helpers/qdrantManager.js`) is
+   `~/.cache/openwhispr/qdrant-data`, keyed on `NODE_ENV` rather than on the
+   channel, so a packaged test build opens the production index even with
+   userData isolated. Unlike the read-only model downloads beside it, this one
+   is mutable and written by a sidecar two processes must not share.
+
+7. **The OS credential vault entry** (`src/helpers/secretCrypto.js`) is one
+   constant service/account pair for every channel, so a test build would read
+   the production master key — and define it if production had never created
+   one. Nothing deletes that entry (`clearAllPersistedData()` only removes
+   `userData/.env` and `userData/secure-keys`), so this is about not reaching
+   into someone else's vault, not about losing it.
+
+8. **Every model-delete route** (`src/helpers/ipcHandlers.js`) removes files
+   from the shared `~/.cache/openwhispr` downloads: the device-erasure path
+   (`cleanup-app`, `delete-account-data` with `erasingDevice`) and also the
+   ordinary per-model buttons — `delete-whisper-model`,
+   `delete-all-whisper-models`, `delete-parakeet-model`,
+   `delete-all-parakeet-models`, `delete-diarization-models`, `model-delete`
+   and `model-delete-all`. Guarding only the erasure path would still leave a
+   tester one click in the model manager away from deleting the production
+   install's models. (The GPU binary packs need no guard: `GpuBinaryManager`
+   installs them under `userData/bin`, which the channel pin already isolates.)
+
+9. **`modelDirUtils.getCacheRoot()` can rename the production install's model
+   directories at startup.** Whenever the root it resolves differs from
+   `~/.cache/openwhispr` it calls `migrateLegacyModelDirs()`, which
+   `renameSync`s `whisper-models`, `parakeet-models`, `diarization-models` and
+   `models` into the new root. Two conditions reach that without anyone asking:
+   an inherited `OPENWHISPR_CACHE_ROOT`, and the automatic Windows fallback
+   when the profile path is not printable ASCII (the root then becomes
+   `C:\ProgramData\OpenWhispr\cache`). A migration is a rename, not a delete,
+   so the delete guards above do not close it.
+
+   This is also why the cache is **not** isolated by pointing the test build at
+   its own `OPENWHISPR_CACHE_ROOT`: doing that would _move_ the production
+   install's models rather than isolate them.
 
 ## The approach: a build-time marker, not an environment variable
 
@@ -70,22 +108,29 @@ build, every dev run and every CI job other than this one. That is what the
 
 ## Enumerated test-only changes
 
-| #   | Path                                                 | Kind | What it does                                                                                                                                                  |
-| --- | ---------------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | `src/helpers/validationBuildPolicy.js`               | new  | Pure policy: channel pin, updater kill switch, protocol-override refusal, CLI-bridge file name. Reads the marker; no Electron.                                |
-| 2   | `main.js` (+19/-1 lines, 2 hunks)                    | edit | `resolveAppChannel()` consults `resolveValidationChannel()` first; `getOAuthProtocol()`'s env-override branch is guarded by `shouldIgnoreProtocolOverride()`. |
-| 3   | `src/updater.js` (+16/-6)                            | edit | The six `NODE_ENV === "development"` update gates route through one `updatesDisabled()` helper that also honours the marker. Identical behaviour without it.  |
-| 4   | `src/helpers/cliBridge.js` (+10/-1)                  | edit | `getBridgeFilePath()` takes its file name from `resolveCliBridgeFileName()`, so a validation build writes `cli-bridge-development.json`.                      |
-| 5   | `electron-builder.validation-win.json`               | new  | Extends `electron-builder.unsigned-win.json`; sets the marker, keeps `windowsTrayIdentity: false`, ships the launchers and readme via `extraFiles`.           |
-| 6   | `validation/`                                        | new  | `Launch-OpenWhispr-Test.cmd`, `Launch-OpenWhispr-Test-Debug.cmd`, `READ-ME-FIRST.txt` (CRLF), `FEATURE_SHA`, `UPSTREAM_BASE_SHA`, `PACKAGING_PATHS`.          |
-| 7   | `scripts/validation/verify-windows-test-artifact.js` | new  | 18 static checks on `dist\win-unpacked`. Launches nothing.                                                                                                    |
-| 8   | `scripts/validation/check-packaging-only-diff.js`    | new  | Refuses to package if the branch differs from the pinned feature SHA outside `validation/PACKAGING_PATHS`.                                                    |
-| 9   | `test/validation/*.test.js`                          | new  | 29 tests: the policy both ways, the updater integration both ways, and the artifact gate against a synthetic `win-unpacked` tree (10 negative cases).         |
-| 10  | `.github/workflows/validation-windows-build.yml`     | new  | Fork-only, push-triggered, unsigned `--dir` build. Never signs, publishes or releases.                                                                        |
-| 11  | `.gitattributes` (+2)                                | edit | CRLF for `validation/*.cmd` and `validation/*.txt`.                                                                                                           |
+| #   | Path                                                                                    | Kind | What it does                                                                                                                                                                                                                                                                                                                                                      |
+| --- | --------------------------------------------------------------------------------------- | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | `src/helpers/validationBuildPolicy.js`                                                  | new  | Pure policy: channel pin, updater kill switch, protocol-override refusal, CLI-bridge file name. Reads the marker; no Electron.                                                                                                                                                                                                                                    |
+| 2   | `main.js` (+19/-1 lines, 2 hunks)                                                       | edit | `resolveAppChannel()` consults `resolveValidationChannel()` first; `getOAuthProtocol()`'s env-override branch is guarded by `shouldIgnoreProtocolOverride()`.                                                                                                                                                                                                     |
+| 3   | `src/updater.js` (+16/-6)                                                               | edit | The six `NODE_ENV === "development"` update gates route through one `updatesDisabled()` helper that also honours the marker. Identical behaviour without it.                                                                                                                                                                                                      |
+| 4   | `src/helpers/cliBridge.js` (+10/-1)                                                     | edit | `getBridgeFilePath()` takes its file name from `resolveCliBridgeFileName()`, so a validation build writes `cli-bridge-development.json`.                                                                                                                                                                                                                          |
+| 4a  | `src/helpers/qdrantManager.js` (+12/-1)                                                 | edit | `STORAGE_DIR` resolves through `resolveQdrantDataDirName()`, so a validation build opens `~/.cache/openwhispr/qdrant-data-validation` instead of the production index.                                                                                                                                                                                            |
+| 4b  | `src/helpers/secretCrypto.js` (+9/-1)                                                   | edit | The keyring `SERVICE` resolves through `resolveKeyringService()`, so a validation build uses the `OpenWhispr-validation` vault entry.                                                                                                                                                                                                                             |
+| 4c  | `src/helpers/ipcHandlers.js` (+41/-5)                                                   | edit | One `eraseSharedCaches` guard, from `shouldSkipSharedDeviceCaches()`, in front of each shared model/cache deletion in the device-erasure path (the user is told the caches were kept; the validation build's own Qdrant directory is still removed), plus a one-line `sharedDownloadDeleteRefusal` guard as the first statement of all seven model-delete routes. |
+| 4d  | `src/helpers/modelDirUtils.js` (+21/-1)                                                 | edit | `getPreferredCacheRoot()` refuses an inherited `OPENWHISPR_CACHE_ROOT` and `getCacheRoot()` skips `migrateLegacyModelDirs()`, so a validation build never renames the production install's model directories. It still resolves the root production would, so it finds models production already moved.                                                           |
+| 5   | `electron-builder.validation-win.json`                                                  | new  | Extends `electron-builder.unsigned-win.json`; sets the marker, keeps `windowsTrayIdentity: false`, ships the launchers and readme via `extraFiles`.                                                                                                                                                                                                               |
+| 6   | `validation/`                                                                           | new  | `Launch-OpenWhispr-Test.cmd`, `Launch-OpenWhispr-Test-Debug.cmd`, `READ-ME-FIRST.txt` (CRLF), `FEATURE_SHA`, `UPSTREAM_BASE_SHA`, `PACKAGING_PATHS`.                                                                                                                                                                                                              |
+| 7   | `scripts/validation/verify-windows-test-artifact.js`, `scripts/validation/asarPaths.js` | new  | 20 static checks on `dist\win-unpacked`, plus separator-safe asar path helpers. Launches nothing.                                                                                                                                                                                                                                                                 |
+| 8   | `scripts/validation/check-packaging-only-diff.js`                                       | new  | Refuses to package if the branch differs from the pinned feature SHA outside `validation/PACKAGING_PATHS`.                                                                                                                                                                                                                                                        |
+| 9   | `test/validation/*.test.js`                                                             | new  | 60 tests: every policy decision both ways, the updater and cache-root modules exercised behaviourally both ways (in-memory `fs`, no real file touched), the asar path helpers against both separators, and the artifact gate against a synthetic `win-unpacked` tree (16 negative cases).                                                                         |
+| 10  | `.github/workflows/validation-windows-build.yml`                                        | new  | Fork-only, push-triggered, unsigned `--dir` build. Never signs, publishes or releases.                                                                                                                                                                                                                                                                            |
+| 11  | `.gitattributes` (+2)                                                                   | edit | CRLF for `validation/*.cmd` and `validation/*.txt`.                                                                                                                                                                                                                                                                                                               |
 
 Nothing in 1–11 is reachable from an ordinary build, and nothing changes the
-dictation feature's behaviour.
+dictation feature's behaviour. Five of the edits (2, 4a, 4b, 4c, 4d) are in
+files the feature itself may also touch; the packaging gate compares this
+branch against the feature SHA, so only these added lines appear as the
+packaging delta.
 
 ## Building a candidate
 
@@ -119,11 +164,15 @@ untouched.
 ## What the automated checks do and do not establish
 
 `verify-windows-test-artifact.js` and the test suite read bytes. They establish
-that the marker shipped, the channel is pinned, the updater is gated, no `.env`
-or credential-shaped string is packaged, the asar carries all 11 locales, the
-native modules (`better-sqlite3`, `ffmpeg`, `onnxruntime`, `onnxWorker`) are
-unpacked, `windows-key-listener.exe` is present, ONNX Runtime is privatized and
-the executable is unsigned.
+that the marker shipped, the channel is pinned, the updater is gated, the OAuth
+protocol override is refused, the CLI bridge file and the Qdrant index are
+scoped away from production, the credential vault entry is validation-scoped,
+every shared-cache deletion is guarded (the erasure path and all seven
+model-delete routes), the model cache cannot be migrated, no real
+`.env` or credential-shaped string is packaged, the asar carries all 11
+locales, the native modules (`better-sqlite3`, `ffmpeg`, `onnxruntime`,
+`onnxWorker`) are unpacked, `windows-key-listener.exe` is present, ONNX Runtime
+is privatized and the executable is unsigned.
 
 They establish **nothing** about global hotkey registration, the Windows
 low-level keyboard hook, microphone capture, clipboard paste, OpenAI
@@ -154,19 +203,41 @@ their Settings rows; the licensed brand font is absent so text renders in the
 bundled Noto Sans; and the build is unsigned so the tray icon keeps no fixed
 position. Dictation, transcription and the cleanup pass are unaffected.
 
-### Shared state that is deliberately left alone
+### Shared state: what is shared, and what was carved out
 
-`~/.cache/openwhispr/` (whisper and Parakeet models, the embedding model,
-`yt-dlp`, and `qdrant-data`) has no channel in its path, so the test build reads
-and writes the same model cache as production. That is intentional: it avoids
-re-downloading gigabytes, and the contents are derived and rebuildable. The one
-consequence worth knowing is that the Qdrant index directory is shared, so the
-two copies must not run at the same time — which the "quit production first"
-step already requires.
+`~/.cache/openwhispr/` has no channel in its path. The **download caches** there
+(whisper, Parakeet and diarization models, the LLM GGUF models, the embedding
+model and `yt-dlp`) stay shared on purpose: they are large immutable downloads,
+and isolating them would make a tester re-fetch gigabytes. The test build reads
+them, and may add a model the tester downloads in it — which production can then
+use too.
+
+Sharing is **not** read-only: a model downloaded inside the test build is
+written to that shared cache, and the production install can then use it. What
+the test build must never do is remove or relocate what is already there, and
+three things in that directory were not safe to leave alone:
+
+- **`qdrant-data`** is a mutable index written by a sidecar, so the validation
+  build uses `qdrant-data-validation` instead (change 4a). Without that the two
+  copies would open the same index directory.
+- **Deletion** — the device-erasure path and all seven per-model delete routes —
+  is refused (change 4c), and each refusal says why rather than failing
+  silently.
+- **Relocation** — `getCacheRoot()`'s legacy migration — is skipped (change 4d).
+
+So the accurate claim is not "fully isolated". The test build's **own data** —
+settings, history, notes, API keys, the Qdrant index, the OAuth handler, the CLI
+bridge entry and the credential vault entry — is isolated from production. The
+downloaded **model files** are shared and may be added to from either side; no
+code path in the test build can delete or move them.
 
 ### Removing it
 
-Delete the unzipped folder, delete `%APPDATA%\OpenWhispr-development`, and if
-you want the registry entry gone, delete
-`HKEY_CURRENT_USER\Software\Classes\openwhispr-dev`. Leave the `openwhispr` key
-without the `-dev` suffix alone — that one is the production install.
+Delete the unzipped folder and `%APPDATA%\OpenWhispr-development`. Optionally
+also remove `%USERPROFILE%\.cache\openwhispr\qdrant-data-validation`,
+`%USERPROFILE%\.openwhispr\cli-bridge-development.json`, the
+`OpenWhispr-validation` Windows Credential Manager entry, and the registry key
+`HKEY_CURRENT_USER\Software\Classes\openwhispr-dev`. Leave anything named
+`OpenWhispr` or `openwhispr` **without** a `-dev`/`-validation` suffix alone —
+those belong to the production install, and so do the shared model downloads
+under `%USERPROFILE%\.cache\openwhispr\`.

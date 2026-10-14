@@ -4,7 +4,15 @@ const path = require("path");
 const { app, safeStorage } = require("electron");
 const debugLogger = require("./debugLogger");
 
-const SERVICE = "OpenWhispr";
+// TEST-ONLY (validation branch): the vault entry is one constant pair for every
+// channel, so a packaged test build would read the production master key.
+// No-op without the extraMetadata marker.
+const { IS_VALIDATION_BUILD, resolveKeyringService } = require("./validationBuildPolicy");
+
+const SERVICE = resolveKeyringService({
+  isValidationBuild: IS_VALIDATION_BUILD,
+  baseService: "OpenWhispr",
+});
 const ACCOUNT = "secrets-master-key";
 const ALGO = "aes-256-gcm";
 const IV_LEN = 12;

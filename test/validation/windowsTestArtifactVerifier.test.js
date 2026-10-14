@@ -73,6 +73,33 @@ function buildFixture(mutate = () => {}) {
     "src/helpers/cliBridge.js":
       "const { resolveCliBridgeFileName } = require('./validationBuildPolicy');\n" +
       "const name = resolveCliBridgeFileName({});\n",
+    "src/helpers/qdrantManager.js": "const d = resolveQdrantDataDirName({});\n",
+    "src/helpers/secretCrypto.js": "const SERVICE = resolveKeyringService({});\n",
+    "src/helpers/modelDirUtils.js":
+      "const a = shouldIgnoreCacheRootOverride({});\nconst b = shouldSkipLegacyCacheMigration({});\n",
+    "src/helpers/ipcHandlers.js": [
+      "const eraseSharedCaches = !shouldSkipSharedDeviceCaches({});",
+      "if (eraseSharedCaches && fs.existsSync(whisperDir)) {}",
+      "if (eraseSharedCaches) await this.parakeetManager?.deleteAllParakeetModels();",
+      "if (eraseSharedCaches) await this.diarizationManager?.deleteModels();",
+      "if (eraseSharedCaches) await modelManager.deleteAllModels();",
+      "for (const cacheName of eraseSharedCaches ? [] : []) {}",
+      "const sharedDownloadDeleteRefusal = refuseSharedDownloadDelete({});",
+      ...[
+        "delete-whisper-model",
+        "delete-all-whisper-models",
+        "delete-parakeet-model",
+        "delete-all-parakeet-models",
+        "delete-diarization-models",
+        "model-delete",
+        "model-delete-all",
+      ].flatMap((route) => [
+        `ipcMain.handle("${route}", async () => {`,
+        "  if (sharedDownloadDeleteRefusal) return sharedDownloadDeleteRefusal;",
+        "});",
+      ]),
+      "",
+    ].join("\n"),
   };
   for (const locale of LOCALES) {
     app[`src/locales/${locale}/translation.json`] = "{}\n";
@@ -136,7 +163,7 @@ async function verify(mutate) {
 test("a well-formed validation artifact passes every static check", async () => {
   const { code, stdout } = await verify();
   assert.equal(code, 0, stdout);
-  assert.match(stdout, /18\/18 checks passed/);
+  assert.match(stdout, /20\/20 checks passed/);
   assert.match(stdout, /OpenWhispr\.exe sha256: [0-9a-f]{64}/);
   assert.doesNotMatch(stdout, /^FAIL/m);
 });
@@ -290,4 +317,50 @@ test("a tracked .env template is ignored, a real .env beside it is not", async (
   });
   assert.equal(failing.code, 1);
   assert.match(failing.stdout, /packaged env files: .*\.env\.local/);
+});
+
+test("an unguarded device-erasure path in the packaged asar fails the gate", async () => {
+  const { code, stdout } = await verify(({ app }) => {
+    app["src/helpers/ipcHandlers.js"] =
+      'for (const cacheName of ["embedding-models", "qdrant-data", "yt-dlp"]) {}\n';
+  });
+  assert.equal(code, 1);
+  assert.match(stdout, /Reset app data would delete the production install's model caches/);
+});
+
+test("a NODE_ENV-keyed Qdrant directory in the packaged asar fails the gate", async () => {
+  const { code, stdout } = await verify(({ app }) => {
+    app["src/helpers/qdrantManager.js"] =
+      'const d = process.env.NODE_ENV === "development" ? "qdrant-data-dev" : "qdrant-data";\n';
+  });
+  assert.equal(code, 1);
+  assert.match(stdout, /would open the production index/);
+});
+
+test("a cross-channel keyring service in the packaged asar fails the gate", async () => {
+  const { code, stdout } = await verify(({ app }) => {
+    app["src/helpers/secretCrypto.js"] = 'const SERVICE = "OpenWhispr";\n';
+  });
+  assert.equal(code, 1);
+  assert.match(stdout, /would read the production master key/);
+});
+
+test("an unguarded model-delete route in the packaged asar fails the gate", async () => {
+  const { code, stdout } = await verify(({ app }) => {
+    app["src/helpers/ipcHandlers.js"] = app["src/helpers/ipcHandlers.js"].replace(
+      'ipcMain.handle("model-delete-all", async () => {\n  if (sharedDownloadDeleteRefusal) return sharedDownloadDeleteRefusal;',
+      'ipcMain.handle("model-delete-all", async () => {\n  await modelManager.deleteAllModels();'
+    );
+  });
+  assert.equal(code, 1);
+  assert.match(stdout, /would remove the production install's shared models: model-delete-all/);
+});
+
+test("a packaged asar that can migrate the production model cache fails the gate", async () => {
+  const { code, stdout } = await verify(({ app }) => {
+    app["src/helpers/modelDirUtils.js"] =
+      "const r = migrateLegacyModelDirs(homeCache, targetRoot);\n";
+  });
+  assert.equal(code, 1);
+  assert.match(stdout, /renames the production install's model directories/);
 });

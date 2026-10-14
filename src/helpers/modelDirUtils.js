@@ -2,6 +2,14 @@ const { app } = require("electron");
 const os = require("os");
 const fs = require("fs");
 const path = require("path");
+// TEST-ONLY (validation branch): keeps a handed-out test artifact from renaming
+// the production install's model directories. No-op without the extraMetadata
+// marker. See VALIDATION_BUILD.md.
+const {
+  IS_VALIDATION_BUILD,
+  shouldIgnoreCacheRootOverride,
+  shouldSkipLegacyCacheMigration,
+} = require("./validationBuildPolicy");
 
 // Same rule as safeTempDir: native whisper/parakeet binaries crash on Windows
 // when model paths contain spaces or non-ASCII (CJK / Cyrillic profile dirs).
@@ -31,7 +39,13 @@ function getAsciiSafeFallbackRoot() {
 }
 
 function getPreferredCacheRoot(homeCache) {
-  if (process.env.OPENWHISPR_CACHE_ROOT) {
+  // TEST-ONLY (validation branch): an inherited override would send a test
+  // artifact at a root that is not the one production uses, and the migration
+  // below would then move production's model directories into it.
+  if (
+    process.env.OPENWHISPR_CACHE_ROOT &&
+    !shouldIgnoreCacheRootOverride({ isValidationBuild: IS_VALIDATION_BUILD })
+  ) {
     return process.env.OPENWHISPR_CACHE_ROOT;
   }
 
@@ -130,6 +144,12 @@ function getCacheRoot() {
   }
 
   if (targetRoot === homeCache) return homeCache;
+  // TEST-ONLY (validation branch): migrateLegacyModelDirs renames the
+  // production install's model directories. A test build uses whatever root it
+  // resolved and migrates nothing.
+  if (shouldSkipLegacyCacheMigration({ isValidationBuild: IS_VALIDATION_BUILD })) {
+    return targetRoot;
+  }
   return migrateLegacyModelDirs(homeCache, targetRoot) ? targetRoot : homeCache;
 }
 

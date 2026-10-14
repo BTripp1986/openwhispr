@@ -29,11 +29,22 @@ const MAX_RESTARTS_PER_SESSION = 3;
 // verifies the old process is really gone before spawning its replacement.
 const RESTART_EXIT_WAIT_MS = 2000;
 
+// TEST-ONLY (validation branch): this directory is keyed on NODE_ENV, not on
+// the channel, so a packaged test build would open the production index even
+// with userData isolated. No-op without the extraMetadata marker.
+const {
+  IS_VALIDATION_BUILD: IS_VALIDATION_BUILD_QDRANT,
+  resolveQdrantDataDirName,
+} = require("./validationBuildPolicy");
+
 const STORAGE_DIR = path.join(
   os.homedir(),
   ".cache",
   "openwhispr",
-  process.env.NODE_ENV === "development" ? "qdrant-data-dev" : "qdrant-data"
+  resolveQdrantDataDirName({
+    isValidationBuild: IS_VALIDATION_BUILD_QDRANT,
+    nodeEnv: process.env.NODE_ENV,
+  })
 );
 
 // Emits "restarted" (port) after a successful unhealthy-restart so the

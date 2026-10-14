@@ -12,11 +12,25 @@ What it will NOT touch
   runs from the folder you unzipped.
 * Your real OpenWhispr settings, history, notes or API keys. This build uses a
   separate profile: %APPDATA%\OpenWhispr-development
+  It also uses its own saved-credential entry (OpenWhispr-validation), its own
+  search index (qdrant-data-validation) and its own CLI bridge entry.
 * Your openwhispr:// links. This build registers openwhispr-dev:// instead.
 * Your startup entry. This build's launch-at-login value name is distinct, and
   it is off unless you turn it on. Please leave it off.
 * Updates. Update checks, downloads and installs are disabled in this build, so
   it can never replace your installed copy.
+* Your downloaded speech and AI models. Those live in a cache this build
+  SHARES with your install (%USERPROFILE%\.cache\openwhispr) so you do not have
+  to re-download gigabytes. Sharing is not read-only - if you download a model
+  inside this build it is written there, and your install can then use it too.
+  What this build cannot do is remove or move them:
+    - every "Delete model" / "Delete all models" button in this build refuses
+      outright and tells you why;
+    - "Reset app data" and "Delete account" still erase THIS BUILD's own data
+      (its settings, history, notes and saved keys in the test profile) - that
+      part works normally - but they keep the shared model cache and say so;
+    - it never relocates the cache.
+  To actually delete a model, use your normal OpenWhispr install.
 
 How to run it
 -------------
@@ -49,10 +63,14 @@ When you are done
 1. Quit this build from its tray icon.
 2. Start your production OpenWhispr and confirm its hotkeys, settings and
    history are unchanged.
-3. To remove every trace: delete the unzipped folder, delete
-   %APPDATA%\OpenWhispr-development, and if you want the registry entry gone
-   too, delete HKEY_CURRENT_USER\Software\Classes\openwhispr-dev
-   (leave the openwhispr key without the -dev suffix alone - that is your
-   production install).
+3. To remove every trace: delete the unzipped folder and
+   %APPDATA%\OpenWhispr-development. Optionally also delete
+   %USERPROFILE%\.cache\openwhispr\qdrant-data-validation,
+   %USERPROFILE%\.openwhispr\cli-bridge-development.json, the
+   OpenWhispr-validation entry in Windows Credential Manager, and the registry
+   key HKEY_CURRENT_USER\Software\Classes\openwhispr-dev.
+   Leave anything named OpenWhispr or openwhispr WITHOUT a -dev/-validation
+   suffix alone - that is your production install - and leave the model
+   downloads in %USERPROFILE%\.cache\openwhispr alone too.
 
 See BUILD-INFO.txt for the exact commit this was built from.

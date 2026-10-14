@@ -7,6 +7,19 @@ const os = require("os");
 const { isRestorablePasteTarget } = require("./windowsPasteTarget");
 const crypto = require("crypto");
 const debugLogger = require("./debugLogger");
+// TEST-ONLY (validation branch): guards the device-erasure path from deleting
+// download caches that a validation build shares with the production install.
+const {
+  IS_VALIDATION_BUILD,
+  shouldSkipSharedDeviceCaches,
+  resolveQdrantDataDirName,
+  refuseSharedDownloadDelete,
+} = require("./validationBuildPolicy");
+// Non-null only in a validation build, where every delete route below hands it
+// straight back instead of removing models shared with the production install.
+const sharedDownloadDeleteRefusal = refuseSharedDownloadDelete({
+  isValidationBuild: IS_VALIDATION_BUILD,
+});
 const { ANALYTICS_HISTORY_BACKFILL_VERSION } = require("./analytics");
 const { PARAKEET_UNSUPPORTED_OS_CODE } = require("./parakeetCapability");
 const { getModelType, isSherpaLocalProvider } = require("./parakeetModelInfo");
@@ -3559,10 +3572,12 @@ class IPCHandlers {
     });
 
     ipcMain.handle("delete-whisper-model", async (event, modelName) => {
+      if (sharedDownloadDeleteRefusal) return sharedDownloadDeleteRefusal;
       return this.whisperManager.deleteWhisperModel(modelName);
     });
 
     ipcMain.handle("delete-all-whisper-models", async () => {
+      if (sharedDownloadDeleteRefusal) return sharedDownloadDeleteRefusal;
       return this.whisperManager.deleteAllWhisperModels();
     });
 
@@ -3922,10 +3937,12 @@ class IPCHandlers {
     });
 
     ipcMain.handle("delete-parakeet-model", async (_event, modelName) => {
+      if (sharedDownloadDeleteRefusal) return sharedDownloadDeleteRefusal;
       return this.parakeetManager.deleteParakeetModel(modelName);
     });
 
     ipcMain.handle("delete-all-parakeet-models", async () => {
+      if (sharedDownloadDeleteRefusal) return sharedDownloadDeleteRefusal;
       return this.parakeetManager.deleteAllParakeetModels();
     });
 
@@ -3997,6 +4014,7 @@ class IPCHandlers {
     });
 
     ipcMain.handle("delete-diarization-models", async () => {
+      if (sharedDownloadDeleteRefusal) return sharedDownloadDeleteRefusal;
       try {
         await this.diarizationManager.deleteModels();
         return { success: true };
@@ -4256,27 +4274,41 @@ class IPCHandlers {
         errors.push(`Audio delete: ${e.message}`);
       }
 
+      // TEST-ONLY (validation branch): a validation build deliberately shares
+      // the read-only download caches under ~/.cache/openwhispr with the
+      // production install, so it must not erase them. Its own Qdrant
+      // directory is still removed. No-op without the extraMetadata marker.
+      const eraseSharedCaches = !shouldSkipSharedDeviceCaches({
+        isValidationBuild: IS_VALIDATION_BUILD,
+      });
+      if (!eraseSharedCaches) {
+        errors.push(
+          "Shared model caches under ~/.cache/openwhispr were kept: this is a validation test build and they belong to the production install"
+        );
+      }
+
       // Delete downloaded models
       try {
         const { getModelsDirForService } = require("./modelDirUtils");
         const whisperDir = getModelsDirForService("whisper");
-        if (fs.existsSync(whisperDir)) fs.rmSync(whisperDir, { recursive: true, force: true });
+        if (eraseSharedCaches && fs.existsSync(whisperDir))
+          fs.rmSync(whisperDir, { recursive: true, force: true });
       } catch (e) {
         errors.push(`Whisper models: ${e.message}`);
       }
       try {
-        await this.parakeetManager?.deleteAllParakeetModels();
+        if (eraseSharedCaches) await this.parakeetManager?.deleteAllParakeetModels();
       } catch (e) {
         errors.push(`Parakeet models: ${e.message}`);
       }
       try {
-        await this.diarizationManager?.deleteModels();
+        if (eraseSharedCaches) await this.diarizationManager?.deleteModels();
       } catch (e) {
         errors.push(`Diarization models: ${e.message}`);
       }
       try {
         const modelManager = require("./modelManagerBridge").default;
-        await modelManager.deleteAllModels();
+        if (eraseSharedCaches) await modelManager.deleteAllModels();
       } catch (e) {
         errors.push(`LLM models: ${e.message}`);
       }
@@ -4284,7 +4316,9 @@ class IPCHandlers {
       // These caches are not owned by one account. Remove them only through
       // the explicit device-erasure path, never during normal account deletion.
       const homeCacheRoot = path.join(os.homedir(), ".cache", "openwhispr");
-      for (const cacheName of ["embedding-models", "qdrant-data", "qdrant-data-dev", "yt-dlp"]) {
+      for (const cacheName of eraseSharedCaches
+        ? ["embedding-models", "qdrant-data", "qdrant-data-dev", "yt-dlp"]
+        : [resolveQdrantDataDirName({ isValidationBuild: IS_VALIDATION_BUILD })]) {
         try {
           fs.rmSync(path.join(homeCacheRoot, cacheName), { recursive: true, force: true });
         } catch (e) {
@@ -4754,6 +4788,7 @@ class IPCHandlers {
     });
 
     ipcMain.handle("model-delete", async (event, modelId) => {
+      if (sharedDownloadDeleteRefusal) return sharedDownloadDeleteRefusal;
       try {
         const modelManager = require("./modelManagerBridge").default;
         await modelManager.deleteModel(modelId);
@@ -4769,6 +4804,7 @@ class IPCHandlers {
     });
 
     ipcMain.handle("model-delete-all", async () => {
+      if (sharedDownloadDeleteRefusal) return sharedDownloadDeleteRefusal;
       try {
         const modelManager = require("./modelManagerBridge").default;
         await modelManager.deleteAllModels();
