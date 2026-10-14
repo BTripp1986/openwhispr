@@ -1,1 +1,3 @@
 openwhispr-mobile/patches/*.patch -whitespace
+validation/*.cmd text eol=crlf
+validation/*.txt text eol=crlf

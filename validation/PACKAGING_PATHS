@@ -1,0 +1,18 @@
+# Every path the validation branch is allowed to differ in from the feature SHA
+# it was built on. The CI gate in .github/workflows/validation-windows-build.yml
+# refuses to package anything that touches a path outside this list, so a
+# packaging artifact can never carry an unreviewed application change.
+#
+# A trailing "/" means "this directory and everything under it".
+# Lines starting with "#" and blank lines are ignored.
+.gitattributes
+.github/workflows/validation-windows-build.yml
+VALIDATION_BUILD.md
+electron-builder.validation-win.json
+main.js
+scripts/validation/
+src/helpers/cliBridge.js
+src/helpers/validationBuildPolicy.js
+src/updater.js
+test/validation/
+validation/

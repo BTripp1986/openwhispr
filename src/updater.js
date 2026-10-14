@@ -1,4 +1,16 @@
 const { autoUpdater } = require("electron-updater");
+// TEST-ONLY (validation branch): an unsigned test artifact must not check,
+// download or install releases — a fresh profile defaults automatic updates on,
+// and the NSIS installer it would run from the quit handler installs over the
+// tester's production copy. No-op in every build without the extraMetadata
+// marker. See VALIDATION_BUILD.md.
+const { IS_VALIDATION_BUILD, areUpdatesDisabled } = require("./helpers/validationBuildPolicy");
+
+const updatesDisabled = () =>
+  areUpdatesDisabled({
+    nodeEnv: process.env.NODE_ENV,
+    isValidationBuild: IS_VALIDATION_BUILD,
+  });
 
 // electron-updater can only replace an AppImage on Linux; deb, rpm and tar.gz
 // installs are updated by the package manager instead.
@@ -27,7 +39,7 @@ class UpdateManager {
   }
 
   setupAutoUpdater() {
-    if (process.env.NODE_ENV === "development") {
+    if (updatesDisabled()) {
       return;
     }
 
@@ -158,7 +170,7 @@ class UpdateManager {
 
   async checkForUpdates() {
     try {
-      if (process.env.NODE_ENV === "development") {
+      if (updatesDisabled()) {
         return {
           updateAvailable: false,
           message: "Update checks are disabled in development mode",
@@ -199,7 +211,7 @@ class UpdateManager {
 
   async downloadUpdate() {
     try {
-      if (process.env.NODE_ENV === "development") {
+      if (updatesDisabled()) {
         return {
           success: false,
           message: "Update downloads are disabled in development mode",
@@ -235,7 +247,7 @@ class UpdateManager {
 
   async installUpdate() {
     try {
-      if (process.env.NODE_ENV === "development") {
+      if (updatesDisabled()) {
         return {
           success: false,
           message: "Update installation is disabled in development mode",
@@ -285,7 +297,7 @@ class UpdateManager {
       return {
         updateAvailable: this.updateAvailable,
         updateDownloaded: this.updateDownloaded,
-        isDevelopment: process.env.NODE_ENV === "development",
+        isDevelopment: updatesDisabled(),
         isSupported: isUpdaterSupported,
       };
     } catch (error) {
@@ -339,7 +351,7 @@ class UpdateManager {
   }
 
   checkForUpdatesOnStartup() {
-    if (process.env.NODE_ENV !== "development" && isUpdaterSupported) {
+    if (!updatesDisabled() && isUpdaterSupported) {
       setTimeout(() => {
         this._autoCheckForUpdates("Startup");
       }, 3000);

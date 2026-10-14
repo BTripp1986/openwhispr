@@ -18,7 +18,16 @@ const LOOPBACK_ADDRESSES = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"]);
 const NO_CONTENT = Symbol("CliBridge.NoContent");
 
 function getBridgeFilePath() {
-  return path.join(os.homedir(), ".openwhispr", "cli-bridge.json");
+  // TEST-ONLY (validation branch): this file is the only app state outside
+  // userData with no channel in its name, and it is rewritten on launch and
+  // deleted on quit. A validation build scopes it so it cannot redirect or
+  // remove the production entry. No-op without the extraMetadata marker.
+  const { IS_VALIDATION_BUILD, resolveCliBridgeFileName } = require("./validationBuildPolicy");
+  const fileName = resolveCliBridgeFileName({
+    isValidationBuild: IS_VALIDATION_BUILD,
+    channel: process.env.OPENWHISPR_CHANNEL,
+  });
+  return path.join(os.homedir(), ".openwhispr", fileName);
 }
 
 async function findAvailablePort() {

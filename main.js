@@ -44,6 +44,14 @@ try {
 }
 
 const VALID_CHANNELS = new Set(["development", "staging", "production"]);
+// TEST-ONLY (validation branch): keeps a handed-out unsigned test artifact off
+// the production profile/protocol/AppUserModelId even when launched without
+// OPENWHISPR_CHANNEL set. No-op in every build without the extraMetadata marker.
+const {
+  IS_VALIDATION_BUILD,
+  resolveValidationChannel,
+  shouldIgnoreProtocolOverride,
+} = require("./src/helpers/validationBuildPolicy");
 const DEFAULT_OAUTH_PROTOCOL_BY_CHANNEL = {
   development: "openwhispr-dev",
   staging: "openwhispr-staging",
@@ -72,6 +80,17 @@ function resolveAppChannel() {
   const rawChannel = (process.env.OPENWHISPR_CHANNEL || process.env.VITE_OPENWHISPR_CHANNEL || "")
     .trim()
     .toLowerCase();
+
+  // TEST-ONLY (validation branch): a validation build is pinned to an isolated
+  // channel before the ordinary resolution, so a bare double-click of the
+  // packaged executable cannot land on the production profile.
+  const validationChannel = resolveValidationChannel({
+    isValidationBuild: IS_VALIDATION_BUILD,
+    requestedChannel: rawChannel,
+  });
+  if (validationChannel) {
+    return validationChannel;
+  }
 
   if (VALID_CHANNELS.has(rawChannel)) {
     return rawChannel;
@@ -147,7 +166,13 @@ function getOAuthProtocol() {
     .trim()
     .toLowerCase();
 
-  if (/^[a-z][a-z0-9+.-]*$/.test(fromEnv)) {
+  // TEST-ONLY (validation branch): an inherited protocol override would let a
+  // test artifact claim the production openwhispr:// handler, which the channel
+  // pin alone does not prevent. No-op without the extraMetadata marker.
+  if (
+    /^[a-z][a-z0-9+.-]*$/.test(fromEnv) &&
+    !shouldIgnoreProtocolOverride({ isValidationBuild: IS_VALIDATION_BUILD })
+  ) {
     return fromEnv;
   }
 

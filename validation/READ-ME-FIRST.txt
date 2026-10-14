@@ -1,0 +1,58 @@
+OpenWhispr - VALIDATION BUILD (test only)
+=========================================
+
+This is an unsigned, unpacked test build of a proposed feature (two new global
+dictation hotkeys: one that skips the AI cleanup pass, one that always runs it).
+It is NOT an OpenWhispr release and is not signed, so Windows SmartScreen will
+warn about it.
+
+What it will NOT touch
+----------------------
+* Your installed OpenWhispr. Nothing is installed or uninstalled; this build
+  runs from the folder you unzipped.
+* Your real OpenWhispr settings, history, notes or API keys. This build uses a
+  separate profile: %APPDATA%\OpenWhispr-development
+* Your openwhispr:// links. This build registers openwhispr-dev:// instead.
+* Your startup entry. This build's launch-at-login value name is distinct, and
+  it is off unless you turn it on. Please leave it off.
+* Updates. Update checks, downloads and installs are disabled in this build, so
+  it can never replace your installed copy.
+
+How to run it
+-------------
+1. Quit your production OpenWhispr from its tray icon. Two copies cannot share
+   the same global hotkeys.
+2. Double-click Launch-OpenWhispr-Test.cmd
+   (or Launch-OpenWhispr-Test-Debug.cmd to also write a debug log).
+   Starting OpenWhispr.exe directly works too - the build pins its own isolated
+   profile - but the launchers print where that profile is.
+3. SmartScreen: "More info" -> "Run anyway". It is unsigned on purpose.
+4. Set up the test profile from scratch: microphone permission, then your
+   OpenAI key and models in Settings. Type them into the app's masked fields.
+   Never paste a key into a chat, a log or a command line.
+
+No Node, npm, git or build tools are needed.
+
+What is missing compared to a release
+------------------------------------
+This artifact is built without any of the project's secrets, so:
+* Google / Microsoft / Apple calendar, Slack, Linear and GitHub connectors
+  report "not configured" and their Settings rows may be hidden. Expected.
+* The licensed brand font is absent, so text renders in the bundled Noto Sans.
+  Cosmetic only.
+* It is unsigned, so the tray icon does not keep a fixed position.
+Dictation, transcription and the AI cleanup pass - the things under test - are
+unaffected.
+
+When you are done
+-----------------
+1. Quit this build from its tray icon.
+2. Start your production OpenWhispr and confirm its hotkeys, settings and
+   history are unchanged.
+3. To remove every trace: delete the unzipped folder, delete
+   %APPDATA%\OpenWhispr-development, and if you want the registry entry gone
+   too, delete HKEY_CURRENT_USER\Software\Classes\openwhispr-dev
+   (leave the openwhispr key without the -dev suffix alone - that is your
+   production install).
+
+See BUILD-INFO.txt for the exact commit this was built from.

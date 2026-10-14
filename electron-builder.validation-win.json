@@ -1,0 +1,21 @@
+{
+  "extends": "electron-builder.unsigned-win.json",
+  "extraMetadata": {
+    "windowsTrayIdentity": false,
+    "openwhisprValidationBuild": true
+  },
+  "extraFiles": [
+    {
+      "from": "validation/Launch-OpenWhispr-Test.cmd",
+      "to": "Launch-OpenWhispr-Test.cmd"
+    },
+    {
+      "from": "validation/Launch-OpenWhispr-Test-Debug.cmd",
+      "to": "Launch-OpenWhispr-Test-Debug.cmd"
+    },
+    {
+      "from": "validation/READ-ME-FIRST.txt",
+      "to": "READ-ME-FIRST.txt"
+    }
+  ]
+}
