@@ -16,9 +16,36 @@
 // Pure module so both decisions are unit-testable without Electron
 // (test/validation/validationBuildPolicy.test.js).
 
-const { openwhisprValidationBuild } = require("../../package.json");
+const { openwhisprValidationBuild, openwhisprValidationChannel } = require("../../package.json");
 
 const IS_VALIDATION_BUILD = openwhisprValidationBuild === true;
+
+// The isolated channel this artifact is pinned to, baked in at build time by
+// electron-builder.validation-win.json through the same `extraMetadata`
+// mechanism as the marker above. It must be baked in rather than read from the
+// environment: a launcher's `set OPENWHISPR_CHANNEL=...` is lost the moment
+// the tester double-clicks OpenWhispr.exe directly, and the build would then
+// fall back to the default channel and open a profile belonging to an earlier
+// test build. Successive candidates handed to the same tester therefore pin
+// different channels so each gets a fresh profile and no earlier one is
+// mutated. `production` is never honoured here — see resolveValidationChannel.
+const ISOLATED_CHANNELS = new Set(["development", "staging"]);
+
+// Channel suffix for every namespace a validation artifact owns OUTSIDE its
+// userData directory. Pinning userData alone is not enough: successive
+// candidates handed to the same tester would still share those namespaces, and
+// the newer one could mutate or invalidate the older one's state. "production"
+// and anything unrecognised yield no suffix, so the pre-pin name is kept.
+function validationNamespaceSuffix(channel) {
+  const raw = typeof channel === "string" ? channel.trim().toLowerCase() : "";
+  if (!raw || raw === "production") return "";
+  return raw.replace(/[^a-z0-9-]/g, "");
+}
+const VALIDATION_PINNED_CHANNEL =
+  typeof openwhisprValidationChannel === "string" &&
+  ISOLATED_CHANNELS.has(openwhisprValidationChannel.trim().toLowerCase())
+    ? openwhisprValidationChannel.trim().toLowerCase()
+    : null;
 
 // Returns the channel a validation build must run on, or null when this is an
 // ordinary build and the caller should keep its existing resolution.
@@ -28,8 +55,12 @@ const IS_VALIDATION_BUILD = openwhisprValidationBuild === true;
 // mistake, and honouring it would put the test build on the tester's real
 // profile. `staging` is allowed through because it is already an isolated
 // channel in main.js.
-function resolveValidationChannel({ isValidationBuild, requestedChannel } = {}) {
+function resolveValidationChannel({ isValidationBuild, requestedChannel, pinnedChannel } = {}) {
   if (!isValidationBuild) return null;
+  // A baked-in pin wins over the environment, so a bare double-click of the
+  // executable lands on the same isolated profile as the launcher does.
+  const pinned = typeof pinnedChannel === "string" ? pinnedChannel.trim().toLowerCase() : "";
+  if (ISOLATED_CHANNELS.has(pinned)) return pinned;
   const requested =
     typeof requestedChannel === "string" ? requestedChannel.trim().toLowerCase() : "";
   return requested === "staging" ? "staging" : "development";
@@ -81,8 +112,16 @@ function resolveCliBridgeFileName({ isValidationBuild, channel } = {}) {
 // mutable, written by a sidecar, and two processes must not open it at once.
 // Its sidecar PID file already lives under userData, so the channel pin covers
 // that part.
-function resolveQdrantDataDirName({ isValidationBuild, nodeEnv } = {}) {
-  if (isValidationBuild === true) return "qdrant-data-validation";
+// `channel` scopes the directory to THIS candidate. The index is mutable, is
+// written by a sidecar, and two processes must not open it at once, so a newer
+// candidate sharing one directory with an earlier candidate could corrupt the
+// earlier tester's index or race its sidecar. Omitting the channel keeps the
+// original unsuffixed name, so an unpinned build is unchanged.
+function resolveQdrantDataDirName({ isValidationBuild, nodeEnv, channel } = {}) {
+  if (isValidationBuild === true) {
+    const suffix = validationNamespaceSuffix(channel);
+    return suffix ? `qdrant-data-validation-${suffix}` : "qdrant-data-validation";
+  }
   return nodeEnv === "development" ? "qdrant-data-dev" : "qdrant-data";
 }
 
@@ -92,9 +131,16 @@ function resolveQdrantDataDirName({ isValidationBuild, nodeEnv } = {}) {
 // key. Nothing deletes that entry (clearAllPersistedData only removes
 // userData/.env and userData/secure-keys), so this is about not touching
 // someone else's vault rather than about losing it.
-function resolveKeyringService({ isValidationBuild, baseService } = {}) {
+// `channel` scopes the vault entry to THIS candidate. The entry holds the
+// master key that decrypts userData/secure-keys; two candidates sharing one
+// entry means a key rotation by the newer one leaves the earlier candidate's
+// stored secrets undecryptable. Omitting the channel keeps the original
+// unsuffixed name, so an unpinned build is unchanged.
+function resolveKeyringService({ isValidationBuild, baseService, channel } = {}) {
   const base = typeof baseService === "string" && baseService ? baseService : "OpenWhispr";
-  return isValidationBuild === true ? `${base}-validation` : base;
+  if (isValidationBuild !== true) return base;
+  const suffix = validationNamespaceSuffix(channel);
+  return suffix ? `${base}-validation-${suffix}` : `${base}-validation`;
 }
 
 // The device-erasure path (ipcHandlers.js `cleanup-app` and
@@ -206,6 +252,8 @@ function refuseValidationDestructiveCloudCall({ isValidationBuild, method, path 
 
 module.exports = {
   IS_VALIDATION_BUILD,
+  VALIDATION_PINNED_CHANNEL,
+  validationNamespaceSuffix,
   resolveValidationChannel,
   areUpdatesDisabled,
   shouldIgnoreProtocolOverride,

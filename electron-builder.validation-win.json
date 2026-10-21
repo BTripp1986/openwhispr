@@ -2,7 +2,8 @@
   "extends": "electron-builder.unsigned-win.json",
   "extraMetadata": {
     "windowsTrayIdentity": false,
-    "openwhisprValidationBuild": true
+    "openwhisprValidationBuild": true,
+    "openwhisprValidationChannel": "staging"
   },
   "extraFiles": [
     {

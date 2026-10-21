@@ -7,11 +7,16 @@ const debugLogger = require("./debugLogger");
 // TEST-ONLY (validation branch): the vault entry is one constant pair for every
 // channel, so a packaged test build would read the production master key.
 // No-op without the extraMetadata marker.
-const { IS_VALIDATION_BUILD, resolveKeyringService } = require("./validationBuildPolicy");
+const {
+  IS_VALIDATION_BUILD,
+  VALIDATION_PINNED_CHANNEL,
+  resolveKeyringService,
+} = require("./validationBuildPolicy");
 
 const SERVICE = resolveKeyringService({
   isValidationBuild: IS_VALIDATION_BUILD,
   baseService: "OpenWhispr",
+  channel: VALIDATION_PINNED_CHANNEL,
 });
 const ACCOUNT = "secrets-master-key";
 const ALGO = "aes-256-gcm";

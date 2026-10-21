@@ -97,7 +97,13 @@ check("app.asar present", () => {
   return `${(fs.statSync(asarPath).size / 1e6).toFixed(1)} MB`;
 });
 
-check("packaged package.json carries the validation marker", () => {
+// The isolated channel this artifact is pinned to, read from the packaged
+// metadata so every check below asserts against the SAME value the running
+// build will use. Successive candidates handed to one tester pin different
+// channels, so each owns a fresh profile and cannot disturb an earlier one.
+let PINNED_CHANNEL = null;
+
+check("packaged package.json carries the validation marker and channel pin", () => {
   const pkg = JSON.parse(readAsarFile(asarPath, "package.json"));
   must(
     pkg.openwhisprValidationBuild === true,
@@ -107,7 +113,13 @@ check("packaged package.json carries the validation marker", () => {
     pkg.windowsTrayIdentity === false,
     `windowsTrayIdentity is ${JSON.stringify(pkg.windowsTrayIdentity)} — an unsigned build must not claim the production tray GUID`
   );
-  return `version ${pkg.version}, marker set, tray identity cleared`;
+  must(
+    pkg.openwhisprValidationChannel === "development" ||
+      pkg.openwhisprValidationChannel === "staging",
+    `openwhisprValidationChannel is ${JSON.stringify(pkg.openwhisprValidationChannel)} — a candidate must bake in an isolated channel so a bare double-click cannot land on another build's profile`
+  );
+  PINNED_CHANNEL = pkg.openwhisprValidationChannel;
+  return `version ${pkg.version}, marker set, tray identity cleared, channel "${PINNED_CHANNEL}"`;
 });
 
 check("packaged main.js pins the isolated channel", () => {
@@ -116,7 +128,11 @@ check("packaged main.js pins the isolated channel", () => {
     main.includes("resolveValidationChannel"),
     "main.js in the asar has no validation channel pin"
   );
-  return "resolveValidationChannel present";
+  must(
+    /pinnedChannel:\s*VALIDATION_PINNED_CHANNEL/.test(main),
+    "main.js in the asar does not pass the baked-in channel pin to resolveValidationChannel — the pin would be inert and a bare double-click would fall back to the default channel"
+  );
+  return `resolveValidationChannel honours the baked pin ("${PINNED_CHANNEL}")`;
 });
 
 check("packaged updater.js gates on the validation marker", () => {
@@ -136,11 +152,12 @@ check("packaged main.js refuses an inherited OAuth protocol override", () => {
     /shouldIgnoreProtocolOverride\(/.test(main),
     "getOAuthProtocol() in the asar no longer consults shouldIgnoreProtocolOverride — an inherited OPENWHISPR_PROTOCOL could claim the production openwhispr:// handler"
   );
+  const scheme = PINNED_CHANNEL === "staging" ? "openwhispr-staging" : "openwhispr-dev";
   must(
-    /development: "openwhispr-dev"/.test(main),
-    "the development channel's OAuth scheme is missing from the asar"
+    new RegExp(`${PINNED_CHANNEL}: "${scheme}"`).test(main),
+    `the ${PINNED_CHANNEL} channel's OAuth scheme is missing from the asar`
   );
-  return "override refused, channel default openwhispr-dev://";
+  return `override refused, channel default ${scheme}://`;
 });
 
 check("packaged cliBridge.js scopes its token file away from production", () => {
@@ -158,11 +175,19 @@ check("packaged build isolates its Qdrant index, vault entry and shared caches",
     /resolveQdrantDataDirName\(/.test(qdrant),
     "qdrantManager.js in the asar still keys its storage directory on NODE_ENV, so a packaged test build would open the production index"
   );
+  must(
+    /channel:\s*VALIDATION_PINNED_CHANNEL/.test(qdrant),
+    "qdrantManager.js in the asar does not scope its index to this candidate's channel, so this build would share a mutable, sidecar-written index with an earlier candidate"
+  );
 
   const secrets = readAsarFile(asarPath, "src/helpers/secretCrypto.js");
   must(
     /resolveKeyringService\(/.test(secrets),
     "secretCrypto.js in the asar still uses the cross-channel keyring service, so a test build would read the production master key"
+  );
+  must(
+    /channel:\s*VALIDATION_PINNED_CHANNEL/.test(secrets),
+    "secretCrypto.js in the asar does not scope its vault entry to this candidate's channel, so rotating the master key here would strand an earlier candidate's stored secrets"
   );
 
   const handlers = readAsarFile(asarPath, "src/helpers/ipcHandlers.js");
@@ -186,8 +211,12 @@ check("packaged build isolates its Qdrant index, vault entry and shared caches",
     .filter(([pattern]) => !pattern.test(handlers))
     .map(([, label]) => label);
   must(unguarded.length === 0, `unguarded shared-cache deletions: ${unguarded.join(", ")}`);
+  must(
+    /resolveQdrantDataDirName\(\{[\s\S]{0,400}?channel:\s*VALIDATION_PINNED_CHANNEL/.test(handlers),
+    "the device-erasure path in the asar resolves the Qdrant directory without this candidate's channel, so Reset app data here would delete an EARLIER candidate's index instead of its own"
+  );
 
-  return "qdrant-data-validation, OpenWhispr-validation vault, erase guarded";
+  return `qdrant-data-validation-${PINNED_CHANNEL}, OpenWhispr-validation-${PINNED_CHANNEL} vault, erase guarded`;
 });
 
 check("packaged build cannot delete or migrate the production model cache", () => {
@@ -378,10 +407,15 @@ check("test launchers and readme shipped at the artifact root", () => {
   }
   const launcher = fs.readFileSync(path.join(root, "Launch-OpenWhispr-Test.cmd"), "utf8");
   must(
-    /OPENWHISPR_CHANNEL=development/.test(launcher),
-    "launcher does not set an isolated OPENWHISPR_CHANNEL"
+    new RegExp(`OPENWHISPR_CHANNEL=${PINNED_CHANNEL}`).test(launcher),
+    `launcher does not set OPENWHISPR_CHANNEL=${PINNED_CHANNEL}, so its printed profile path would not match the one the build actually uses`
   );
-  return "3 files";
+  const readme = fs.readFileSync(path.join(root, "READ-ME-FIRST.txt"), "utf8");
+  must(
+    readme.includes(`OpenWhispr-${PINNED_CHANNEL}`),
+    `READ-ME-FIRST.txt does not name this candidate's profile (OpenWhispr-${PINNED_CHANNEL})`
+  );
+  return `3 files, channel "${PINNED_CHANNEL}"`;
 });
 
 const width = Math.max(...results.map((r) => r.name.length));

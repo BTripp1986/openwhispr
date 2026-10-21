@@ -34,6 +34,7 @@ const RESTART_EXIT_WAIT_MS = 2000;
 // with userData isolated. No-op without the extraMetadata marker.
 const {
   IS_VALIDATION_BUILD: IS_VALIDATION_BUILD_QDRANT,
+  VALIDATION_PINNED_CHANNEL: VALIDATION_PINNED_CHANNEL_QDRANT,
   resolveQdrantDataDirName,
 } = require("./validationBuildPolicy");
 
@@ -44,6 +45,7 @@ const STORAGE_DIR = path.join(
   resolveQdrantDataDirName({
     isValidationBuild: IS_VALIDATION_BUILD_QDRANT,
     nodeEnv: process.env.NODE_ENV,
+    channel: VALIDATION_PINNED_CHANNEL_QDRANT,
   })
 );
 

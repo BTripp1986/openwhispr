@@ -11,6 +11,7 @@ const debugLogger = require("./debugLogger");
 // download caches that a validation build shares with the production install.
 const {
   IS_VALIDATION_BUILD,
+  VALIDATION_PINNED_CHANNEL,
   shouldSkipSharedDeviceCaches,
   resolveQdrantDataDirName,
   refuseSharedDownloadDelete,
@@ -4318,7 +4319,16 @@ class IPCHandlers {
       const homeCacheRoot = path.join(os.homedir(), ".cache", "openwhispr");
       for (const cacheName of eraseSharedCaches
         ? ["embedding-models", "qdrant-data", "qdrant-data-dev", "yt-dlp"]
-        : [resolveQdrantDataDirName({ isValidationBuild: IS_VALIDATION_BUILD })]) {
+        : // The channel MUST be passed here. Without it this resolves to the
+          // unsuffixed "qdrant-data-validation", which belongs to an earlier
+          // candidate, so a reset in this build would delete another tester
+          // build's index instead of its own.
+          [
+            resolveQdrantDataDirName({
+              isValidationBuild: IS_VALIDATION_BUILD,
+              channel: VALIDATION_PINNED_CHANNEL,
+            }),
+          ]) {
         try {
           fs.rmSync(path.join(homeCacheRoot, cacheName), { recursive: true, force: true });
         } catch (e) {

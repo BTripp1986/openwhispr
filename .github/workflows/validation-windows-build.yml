@@ -218,6 +218,11 @@ jobs:
           test -d "$out"
           node -e '
             const fs = require("fs");
+            const channel = require("./electron-builder.validation-win.json")
+              .extraMetadata.openwhisprValidationChannel;
+            if (channel !== "development" && channel !== "staging") {
+              throw new Error(`refusing to package: openwhisprValidationChannel is ${JSON.stringify(channel)}`);
+            }
             const manifest = {
               artifact: "openwhispr-validation-win-unpacked",
               label: process.env.BUILD_LABEL,
@@ -236,9 +241,16 @@ jobs:
               builderConfig: "electron-builder.validation-win.json",
               signed: false,
               updatesDisabled: true,
-              isolatedChannel: "development",
-              userDataPath: "%APPDATA%\\OpenWhispr-development",
-              oauthScheme: "openwhispr-dev",
+              // Read from the builder config rather than hardcoded: successive
+              // candidates pin different channels so each owns a fresh profile
+              // and cannot disturb an earlier candidate handed to the same
+              // tester. A mismatch here would mis-describe the artifact.
+              isolatedChannel: channel,
+              userDataPath: `%APPDATA%\\OpenWhispr-${channel}`,
+              oauthScheme: channel === "staging" ? "openwhispr-staging" : "openwhispr-dev",
+              qdrantIndex: `qdrant-data-validation-${channel}`,
+              vaultEntry: `OpenWhispr-validation-${channel}`,
+              cliBridgeFile: `cli-bridge-${channel}.json`,
               packagedSecrets: "none",
               builtAt: new Date().toISOString(),
             };
@@ -257,7 +269,12 @@ jobs:
               "auto-updates    disabled in this build",
               `test profile    ${manifest.userDataPath}`,
               `OAuth scheme    ${manifest.oauthScheme}://`,
+              `search index    ${manifest.qdrantIndex}`,
+              `vault entry     ${manifest.vaultEntry}`,
               "packaged creds  none",
+              "",
+              "This candidate owns only the names above. An earlier candidate's",
+              "profile, vault entry and search index are never opened.",
               "",
             ].join("\r\n");
             fs.writeFileSync("dist/win-unpacked/BUILD-INFO.txt", info);

@@ -64,6 +64,73 @@ test("a validation build honours an explicit staging request", () => {
   );
 });
 
+test("a baked-in channel pin beats the environment, so a direct double-click is isolated too", () => {
+  // The whole point of baking the channel into extraMetadata: a launcher's
+  // `set OPENWHISPR_CHANNEL=...` is lost when the tester runs OpenWhispr.exe
+  // directly, and an unpinned build would then fall back to "development" and
+  // open the profile of an earlier candidate handed to the same tester.
+  for (const requestedChannel of [undefined, "", "   ", "development", "production", "nonsense"]) {
+    assert.equal(
+      resolveValidationChannel({
+        isValidationBuild: true,
+        requestedChannel,
+        pinnedChannel: "staging",
+      }),
+      "staging",
+      `requested ${JSON.stringify(requestedChannel)} must not override the pin`
+    );
+  }
+  assert.equal(
+    resolveValidationChannel({
+      isValidationBuild: true,
+      requestedChannel: "staging",
+      pinnedChannel: "development",
+    }),
+    "development",
+    "the pin wins in the other direction too"
+  );
+});
+
+test("a pinned channel is normalised and never production", () => {
+  assert.equal(
+    resolveValidationChannel({ isValidationBuild: true, pinnedChannel: " STAGING " }),
+    "staging"
+  );
+  // production, and anything unrecognised, falls back to the ordinary
+  // resolution rather than being honoured.
+  for (const pinnedChannel of ["production", "PRODUCTION", "nonsense", "", "   ", null, 42, {}]) {
+    const channel = resolveValidationChannel({ isValidationBuild: true, pinnedChannel });
+    assert.notEqual(channel, "production", `pinned ${JSON.stringify(pinnedChannel)}`);
+    assert.equal(channel, "development", `pinned ${JSON.stringify(pinnedChannel)}`);
+  }
+});
+
+test("an ordinary build ignores a channel pin entirely", () => {
+  for (const pinnedChannel of ["staging", "development", "production"]) {
+    assert.equal(
+      resolveValidationChannel({ isValidationBuild: false, pinnedChannel }),
+      null,
+      `pinned ${pinnedChannel}`
+    );
+  }
+});
+
+test("the packaged channel pin and the marker travel together", () => {
+  // Both are injected by electron-builder.validation-win.json. A pin present in
+  // a checkout's package.json would mean the extraMetadata leaked, exactly as
+  // for the marker above.
+  const pkg = require("../../package.json");
+  assert.equal(pkg.openwhisprValidationChannel, undefined, "pin leaked into package.json");
+  const builder = require("../../electron-builder.validation-win.json");
+  assert.equal(
+    builder.extraMetadata.openwhisprValidationChannel,
+    "staging",
+    "the revision candidate must pin a channel other than the previous candidate's"
+  );
+  assert.equal(builder.extraMetadata.openwhisprValidationBuild, true);
+  assert.equal(builder.extraMetadata.windowsTrayIdentity, false);
+});
+
 test("updates stay disabled for a validation build regardless of NODE_ENV", () => {
   for (const nodeEnv of [undefined, "", "production", "test", "development"]) {
     assert.equal(
@@ -320,6 +387,72 @@ test("qdrantManager resolves its storage directory through the policy", () => {
   );
 });
 
+test("successive candidates do not share the Qdrant index", () => {
+  // The index is mutable and sidecar-written; two candidates must never open
+  // one directory. Pinning userData alone does not separate it.
+  const prev = resolveQdrantDataDirName({ isValidationBuild: true });
+  const rev = resolveQdrantDataDirName({ isValidationBuild: true, channel: "staging" });
+  assert.equal(prev, "qdrant-data-validation", "unpinned build keeps its original name");
+  assert.equal(rev, "qdrant-data-validation-staging");
+  assert.notEqual(rev, prev, "the revision candidate must not reuse the earlier namespace");
+  for (const dir of [prev, rev]) {
+    assert.notEqual(dir, "qdrant-data");
+    assert.notEqual(dir, "qdrant-data-dev");
+  }
+});
+
+test("successive candidates do not share the credential vault entry", () => {
+  // The entry holds the master key for userData/secure-keys; sharing it means
+  // a rotation by the newer candidate strands the earlier one's secrets.
+  const prev = resolveKeyringService({ isValidationBuild: true, baseService: "OpenWhispr" });
+  const rev = resolveKeyringService({
+    isValidationBuild: true,
+    baseService: "OpenWhispr",
+    channel: "staging",
+  });
+  assert.equal(prev, "OpenWhispr-validation");
+  assert.equal(rev, "OpenWhispr-validation-staging");
+  assert.notEqual(rev, prev);
+  assert.notEqual(rev, "OpenWhispr", "never the production vault entry");
+});
+
+test("a namespace suffix is sanitised and never production", () => {
+  for (const channel of ["production", "PRODUCTION", "", "   ", null, 42, undefined]) {
+    assert.equal(
+      resolveQdrantDataDirName({ isValidationBuild: true, channel }),
+      "qdrant-data-validation",
+      `channel ${JSON.stringify(channel)} must not add a suffix`
+    );
+  }
+  assert.equal(
+    resolveQdrantDataDirName({ isValidationBuild: true, channel: " STAGING " }),
+    "qdrant-data-validation-staging"
+  );
+  assert.equal(
+    resolveQdrantDataDirName({ isValidationBuild: true, channel: "a/../b" }),
+    "qdrant-data-validation-ab",
+    "path separators are stripped, so a channel cannot escape the cache root"
+  );
+});
+
+test("the reset path deletes THIS candidate's Qdrant index, not an earlier one", () => {
+  // Regression guard: resolving without the channel here would make a reset in
+  // the revision build remove the previous candidate's index instead of its own.
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const source = fs.readFileSync(
+    path.resolve(__dirname, "..", "..", "src", "helpers", "ipcHandlers.js"),
+    "utf8"
+  );
+  const call = source.match(/resolveQdrantDataDirName\(\{[^}]*\}\)/s);
+  assert.ok(call, "ipcHandlers must resolve the directory through the policy");
+  assert.match(
+    call[0],
+    /channel:\s*VALIDATION_PINNED_CHANNEL/,
+    "the device-erasure path must pass the pinned channel"
+  );
+});
+
 test("an ordinary build keeps the production keyring service", () => {
   assert.equal(
     resolveKeyringService({ isValidationBuild: false, baseService: "OpenWhispr" }),
@@ -385,7 +518,7 @@ test("the device-erasure path guards every shared cache deletion", () => {
   // otherwise still removes the validation build's own Qdrant directory.
   assert.match(
     source,
-    /for \(const cacheName of eraseSharedCaches\s*\n?\s*\? \["embedding-models", "qdrant-data", "qdrant-data-dev", "yt-dlp"\]\s*\n?\s*: \[resolveQdrantDataDirName\(/,
+    /for \(const cacheName of eraseSharedCaches\s*\n?\s*\? \["embedding-models", "qdrant-data", "qdrant-data-dev", "yt-dlp"\]\s*\n?\s*:[\s\S]{0,400}?resolveQdrantDataDirName\(/,
     "the ~/.cache/openwhispr deletion loop is no longer guarded"
   );
 });

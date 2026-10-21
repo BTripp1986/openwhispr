@@ -60,21 +60,24 @@ function buildFixture(mutate = () => {}) {
         version: "1.10.3",
         windowsTrayIdentity: false,
         openwhisprValidationBuild: true,
+        openwhisprValidationChannel: "staging",
       },
       null,
       2
     ),
     "main.js":
-      "const { resolveValidationChannel, shouldIgnoreProtocolOverride } = require('./src/helpers/validationBuildPolicy');\n" +
-      'const DEFAULT_OAUTH_PROTOCOL_BY_CHANNEL = { development: "openwhispr-dev" };\n' +
-      "resolveValidationChannel({});\nshouldIgnoreProtocolOverride({});\n",
+      "const { resolveValidationChannel, shouldIgnoreProtocolOverride, VALIDATION_PINNED_CHANNEL } = require('./src/helpers/validationBuildPolicy');\n" +
+      'const DEFAULT_OAUTH_PROTOCOL_BY_CHANNEL = { development: "openwhispr-dev", staging: "openwhispr-staging" };\n' +
+      "resolveValidationChannel({ pinnedChannel: VALIDATION_PINNED_CHANNEL });\nshouldIgnoreProtocolOverride({});\n",
     "preload.js": "// stub\n",
     "src/updater.js": "const updatesDisabled = () => true;\nif (updatesDisabled()) {}\n",
     "src/helpers/cliBridge.js":
       "const { resolveCliBridgeFileName } = require('./validationBuildPolicy');\n" +
       "const name = resolveCliBridgeFileName({});\n",
-    "src/helpers/qdrantManager.js": "const d = resolveQdrantDataDirName({});\n",
-    "src/helpers/secretCrypto.js": "const SERVICE = resolveKeyringService({});\n",
+    "src/helpers/qdrantManager.js":
+      "const d = resolveQdrantDataDirName({ channel: VALIDATION_PINNED_CHANNEL });\n",
+    "src/helpers/secretCrypto.js":
+      "const SERVICE = resolveKeyringService({ channel: VALIDATION_PINNED_CHANNEL });\n",
     "src/helpers/cloudApiRequest.js": [
       "const r = refuseValidationDestructiveCloudCall({ method, path });",
       "if (r) return r;",
@@ -89,7 +92,9 @@ function buildFixture(mutate = () => {}) {
       "if (eraseSharedCaches) await this.parakeetManager?.deleteAllParakeetModels();",
       "if (eraseSharedCaches) await this.diarizationManager?.deleteModels();",
       "if (eraseSharedCaches) await modelManager.deleteAllModels();",
-      "for (const cacheName of eraseSharedCaches ? [] : []) {}",
+      "for (const cacheName of eraseSharedCaches",
+      '  ? ["embedding-models", "qdrant-data", "qdrant-data-dev", "yt-dlp"]',
+      "  : [resolveQdrantDataDirName({ isValidationBuild: IS_VALIDATION_BUILD, channel: VALIDATION_PINNED_CHANNEL })]) {}",
       "const sharedDownloadDeleteRefusal = refuseSharedDownloadDelete({});",
       ...[
         "delete-whisper-model",
@@ -265,9 +270,9 @@ test("a missing test launcher fails the gate", async () => {
 test("an unguarded protocol override in the packaged main.js fails the gate", async () => {
   const { code, stdout } = await verify(({ app }) => {
     app["main.js"] =
-      "const { resolveValidationChannel } = require('./src/helpers/validationBuildPolicy');\n" +
-      'const DEFAULT_OAUTH_PROTOCOL_BY_CHANNEL = { development: "openwhispr-dev" };\n' +
-      "resolveValidationChannel({});\n";
+      "const { resolveValidationChannel, VALIDATION_PINNED_CHANNEL } = require('./src/helpers/validationBuildPolicy');\n" +
+      'const DEFAULT_OAUTH_PROTOCOL_BY_CHANNEL = { development: "openwhispr-dev", staging: "openwhispr-staging" };\n' +
+      "resolveValidationChannel({ pinnedChannel: VALIDATION_PINNED_CHANNEL });\n";
   });
   assert.equal(code, 1);
   assert.match(stdout, /could claim the production openwhispr:\/\/ handler/);

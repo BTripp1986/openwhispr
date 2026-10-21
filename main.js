@@ -49,6 +49,7 @@ const VALID_CHANNELS = new Set(["development", "staging", "production"]);
 // OPENWHISPR_CHANNEL set. No-op in every build without the extraMetadata marker.
 const {
   IS_VALIDATION_BUILD,
+  VALIDATION_PINNED_CHANNEL,
   resolveValidationChannel,
   shouldIgnoreProtocolOverride,
 } = require("./src/helpers/validationBuildPolicy");
@@ -87,6 +88,7 @@ function resolveAppChannel() {
   const validationChannel = resolveValidationChannel({
     isValidationBuild: IS_VALIDATION_BUILD,
     requestedChannel: rawChannel,
+    pinnedChannel: VALIDATION_PINNED_CHANNEL,
   });
   if (validationChannel) {
     return validationChannel;

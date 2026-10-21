@@ -1,20 +1,38 @@
-OpenWhispr - VALIDATION BUILD (test only)
-=========================================
+OpenWhispr - REVISION TEST BUILD (test only)
+============================================
 
-This is an unsigned, unpacked test build of a proposed feature (two new global
-dictation hotkeys: one that skips the AI cleanup pass, one that always runs it).
-It is NOT an OpenWhispr release and is not signed, so Windows SmartScreen will
-warn about it.
+This is an unsigned, unpacked test build of a revised feature: every dictation
+shortcut now carries its OWN text-cleanup setting, in one Dictation Hotkey
+section. It is NOT an OpenWhispr release and is not signed, so Windows
+SmartScreen will warn about it.
+
+This REPLACES the October 14 test build's separate Raw Dictation and Cleaned
+Dictation sections. Those are gone.
+
+Your October 14 test build
+--------------------------
+This candidate runs on a DIFFERENT isolated channel ('staging'), so it starts
+on a brand-new empty profile and cannot read, change or delete anything the
+October 14 build owns. Nothing of yours is migrated, and nothing is wiped.
+
+You will therefore set this build up from scratch - API key, shortcuts and
+cleanup settings. That is deliberate: it is what keeps the earlier profile
+intact. You do not need to uninstall or delete the October 14 build, and you
+should not delete its profile unless you decide you want to.
 
 What it will NOT touch
 ----------------------
 * Your installed OpenWhispr. Nothing is installed or uninstalled; this build
   runs from the folder you unzipped.
 * Your real OpenWhispr settings, history, notes or API keys. This build uses a
-  separate profile: %APPDATA%\OpenWhispr-development
-  It also uses its own saved-credential entry (OpenWhispr-validation), its own
-  search index (qdrant-data-validation) and its own CLI bridge entry.
-* Your openwhispr:// links. This build registers openwhispr-dev:// instead.
+  separate profile: %APPDATA%\OpenWhispr-staging
+  It also uses its own saved-credential entry (OpenWhispr-validation-staging),
+  its own search index (qdrant-data-validation-staging) and its own CLI bridge
+  entry (cli-bridge-staging.json).
+* The October 14 test build's profile, credential entry and search index.
+  Those end in -development / -validation and belong to that build; this one
+  never opens them, including when you use Reset app data here.
+* Your openwhispr:// links. This build registers openwhispr-staging:// instead.
 * Your startup entry. This build's launch-at-login value name is distinct, and
   it is off unless you turn it on. Please leave it off.
 * Updates. Update checks, downloads and installs are disabled in this build, so
@@ -27,7 +45,7 @@ What it will NOT touch
     - every "Delete model" / "Delete all models" button in this build refuses
       outright and tells you why;
     - "Reset app data" still erases THIS BUILD's own data (its settings,
-      history, notes and saved keys in the test profile) - that part works
+      history, notes and saved keys in its own test profile) - that part works
       normally - but it keeps the shared model cache and says so;
     - it never relocates the cache.
   To actually delete a model, use your normal OpenWhispr install.
@@ -43,9 +61,7 @@ not a local reset. This build refuses that one call so a stray click cannot
 destroy your account, but do not rely on that: there is no reason to sign in
 for this test at all.
 
-So: run this test SIGNED OUT, using your own OpenAI key. That is the
-configuration under test - raw vs cleaned dictation through your own OpenAI
-key - and it needs no OpenWhispr account. The exact buttons:
+So: run this test SIGNED OUT, using your own OpenAI key. The exact buttons:
 
   1. On the sign-in screen, click "Continue without an account".
   2. Work through the microphone and hotkey steps.
@@ -57,19 +73,20 @@ Then set BOTH halves of the pipeline in Settings - they are separate, and this
 test needs both:
 
   - Settings -> "Speech to Text": provider OpenAI, and pick the transcription
-    model. This is what the raw hotkey exercises.
+    model.
   - Settings -> "AI Text Enhancement": the Dictation Cleanup scope, provider
-    OpenAI, and pick the cleanup model and prompt. This is the extra pass the
-    cleaned hotkey forces and the raw hotkey must skip.
+    OpenAI, and pick the cleanup model and prompt. This is the extra pass that
+    "Always on" forces and "Always off" skips.
 
 How to run it
 -------------
 1. Quit your production OpenWhispr from its tray icon. Two copies cannot share
-   the same global hotkeys.
+   the same global hotkeys. Quit the October 14 test build too if it is running.
 2. Double-click Launch-OpenWhispr-Test.cmd
    (or Launch-OpenWhispr-Test-Debug.cmd to also write a debug log).
-   Starting OpenWhispr.exe directly works too - the build pins its own isolated
-   profile - but the launchers print where that profile is.
+   Starting OpenWhispr.exe directly works too - the isolated profile is baked
+   into the build, not set by the launcher - but the launchers print where that
+   profile is.
 3. SmartScreen: "More info" -> "Run anyway". It is unsigned on purpose.
 4. Set up the test profile from scratch, following the signed-out steps above.
    Type the key into the app's masked field. Never paste a key into a chat, a
@@ -79,92 +96,98 @@ No Node, npm, git or build tools are needed.
 
 What to actually test
 ---------------------
-The feature is two NEW global shortcuts that pick one recording's cleanup,
-without changing your saved cleanup setting:
-  RAW     - transcribe and paste, skipping the AI cleanup pass.
-  CLEANED - transcribe, always run the configured cleanup, then paste.
-Your existing Dictation Hotkey is unchanged and still follows the saved
-setting.
+There is now ONE "Dictation Hotkey" section. Each shortcut in it is a row, and
+each row has a "Customize cleanup" disclosure containing a "Text cleanup"
+selector with three choices:
 
-IMPORTANT - both new shortcuts are TAP-TO-TOGGLE ONLY: press once to start,
-press again to stop. They do NOT support Hold / push-to-talk, the same as the
-existing Voice Assistant, Translation and Meeting shortcuts. Holding one will
-not stop the recording when you let go. Only the main Dictation Hotkey
-supports Hold, and its behaviour is not changed. Neither new shortcut has a
-default binding, so both start empty until you assign them.
+  Use app setting - follow your saved cleanup preference (the default, and what
+                    every existing shortcut keeps).
+  Always on       - always run the configured cleanup for this shortcut.
+  Always off      - always skip the cleanup pass for this shortcut.
 
-ALSO BY DESIGN - pressing the OTHER mode's shortcut while a recording is
-running simply STOPS that recording. It does not switch its mode. A recording
-keeps whichever mode it started in, all the way through transcription. So if
-you tap RAW and then tap CLEANED to stop it, you get a RAW result, and that is
-correct, not a bug.
+"Add another hotkey" adds more rows. Always on / Always off ignore the saved
+preference without ever changing it.
 
-What "raw" means: it skips the optional AI cleanup pass. It is NOT a promise of
-word-for-word output - the speech-to-text model may still tidy up filler on its
-own. So judge RAW by whether the cleanup pass ran, not by how the text reads.
-The decisive check is the debug log (see below): a raw recording makes no
-cleanup request at all. A visible difference between raw and cleaned is useful
-when you see it, but it is not required and its absence is not a failure.
+What "Always off" means: it skips the optional AI cleanup pass. It is NOT a
+promise of word-for-word output - the speech-to-text model may still tidy up
+filler on its own. Judge it by whether the cleanup pass ran, not by how the
+text reads. The debug log is decisive (see below).
 
 Suggested run, with a disfluent sample like "um so like can you uh send the
 thing to the team i guess":
 
-  1. Settings -> Hotkeys: assign a shortcut to "Raw Dictation" and a different
-     one to "Cleaned Dictation". Both start empty.
-     Complete every recording below by tapping the SAME shortcut twice - once
-     to start, once to stop. Do not stop one mode with the other mode's key
-     until step 11, which tests that on purpose.
-  2. Turn your saved AI cleanup setting ON. Do one RAW recording (tap RAW, tap
-     RAW again), then one CLEANED recording (tap CLEANED, tap CLEANED again).
-     Expect no cleanup request for RAW and one for CLEANED in the log; any
-     difference in the pasted text is a bonus, not the test.
-  3. Turn the saved setting OFF and repeat both, the same way. RAW must still
-     skip cleanup and CLEANED must still run it. This is the main point of the
-     feature, and the log is what proves it.
+  1. Settings -> Hotkeys -> Dictation Hotkey. Set up Ben's two rows:
+       Ctrl+Shift+Space  -> Customize cleanup -> Always on
+       Ctrl+Alt+Shift    -> Customize cleanup -> Always off
+     Add the second with "Add another hotkey". Confirm a collapsed row with an
+     override still shows which mode it is in.
+  2. Turn your saved AI cleanup setting ON. Record once with each shortcut.
+     Expect a cleanup request for Always on and none for Always off.
+  3. Turn the saved setting OFF and repeat both. The two shortcuts must behave
+     exactly as in step 2. This is the whole point of the feature, and the log
+     is what proves it.
   4. After each one, reopen Settings and confirm your saved cleanup setting is
-     exactly where you left it - using a shortcut must never change it.
-  5. Tap your normal Dictation Hotkey and confirm it still follows the saved
-     setting (cleaned when ON, plain when OFF), and that Hold still works on it
-     if you use Hold.
+     exactly where you left it - using a shortcut must never change it, and
+     neither must toggling it change either row's selector.
+  5. Add a third row left on "Use app setting". It must follow the saved
+     setting both ways, while the other two ignore it.
   6. Dictate something that sounds like talking to the assistant, e.g.
-     "hey <your agent name> what is the weather". Through RAW or CLEANED it
-     must paste that as dictated text, NOT an assistant answer.
-  7. Quit the test build, start it again, and confirm both shortcuts are still
-     assigned and still work.
-  8. Now clear one of them (the X / clear control in Settings), quit, and start
-     again. It must come back EMPTY, not showing a binding that no longer
-     works. Re-assign it afterwards.
-  9. Try assigning a shortcut already used by another action - it should be
-     refused with a message naming the conflict, not silently accepted.
- 10. Clear cleanup configuration (or pick no cleanup model) and do a CLEANED
-     recording: you should still get your transcript pasted, plus a notice
+     "hey <your agent name> what is the weather". From an Always on or Always
+     off row it must paste that as dictated text, NOT an assistant answer.
+  7. Quit the test build, start it again, and confirm every row kept both its
+     key AND its cleanup mode.
+  8. Rename a row's shortcut to a different key. Its cleanup mode must follow
+     the new key, not reset and not jump to another row.
+  9. Remove a row. The remaining rows must keep their own modes - no override
+     should move to a neighbour. Quit and restart: the removed row must stay
+     removed, and must not come back.
+ 10. Try assigning a shortcut already used by another action (Voice Assistant,
+     Translation, Meetings, or another row) - it should be refused with a
+     message naming the conflict, not silently accepted.
+ 11. Activation mode (Tap / Hold) sits under the whole section and governs
+     every row. With Hold selected, check that BOTH rows actually hold - press
+     and keep held, speak, release to stop. If a row cannot support Hold, the
+     control must say so rather than offering Hold and silently behaving as
+     Tap. Then switch back to Tap and confirm both rows toggle again.
+ 12. Press one row, then the other about a quarter-second later. The second
+     press must NOT be silently swallowed - it should stop the recording that
+     the first one started. You must never end up with two recordings running
+     at once.
+ 13. Change a row's Text cleanup selector while that row's shortcut is NOT in
+     use. It should take effect immediately with no re-assignment, and the
+     shortcut must still fire afterwards.
+ 14. Clear cleanup configuration (or pick no cleanup model) and record with an
+     Always on row: you should still get your transcript pasted, plus a notice
      that cleanup did not run ("AI cleanup isn't set up"). It must not
      silently pass off the raw text as cleaned.
- 11. Now the cross-stop and race cases. Start a RAW recording and stop it by
-     tapping CLEANED: the result must be RAW, because a recording keeps the
-     mode it started in. Then cancel a recording with Esc and immediately use
-     the other shortcut; tap one shortcut repeatedly; press the other one
-     while the first is still processing. Nothing should paste twice, paste
-     late, or come back in the wrong mode.
- 12. Smoke-test that Voice Assistant, Translation and meeting/note recording
+ 15. Cancel a recording with Esc and immediately use another row; tap one row
+     repeatedly; press another while the first is still processing. Nothing
+     should paste twice, paste late, or come back in the wrong mode.
+ 16. Use "Reset to default" on the section. Say what it does to your rows and
+     their modes - whatever it does, it should be consistent and should not
+     leave a mode attached to a row you no longer have.
+ 17. Smoke-test that Voice Assistant, Translation and meeting/note recording
      still behave as before. Say so if any of them is unconfigured rather than
      counting it as passed.
 
 How to read the decisive evidence: start from
 Launch-OpenWhispr-Test-Debug.cmd and open the newest file in
-%APPDATA%\OpenWhispr-development\logs. Each recording logs one ROUTE_RESOLVED
+%APPDATA%\OpenWhispr-staging\logs. Each recording logs one ROUTE_RESOLVED
 line:
-  raw      -> cleanupMode "raw",        cleanupSelected false, kind "skip"
-  cleaned  -> cleanupMode "cleaned",    cleanupSelected true,  kind "cleanup"
-  normal   -> cleanupMode "preference", following your saved setting
-A raw recording shows no cleanup request after that line. Logs can contain
-transcript text, so dictate synthetic phrases and skim a log before sharing it.
+  Always off -> cleanupMode "raw",        cleanupSelected false, kind "skip"
+  Always on  -> cleanupMode "cleaned",    cleanupSelected true,  kind "cleanup"
+  app setting-> cleanupMode "preference", following your saved setting
+An Always off recording shows no cleanup request after that line. Logs can
+contain transcript text, so dictate synthetic phrases and skim a log before
+sharing it.
 
 What is missing compared to a release
 ------------------------------------
 This artifact is built without any of the project's secrets, so:
 * Google / Microsoft / Apple calendar, Slack, Linear and GitHub connectors
   report "not configured" and their Settings rows may be hidden. Expected.
+* Signing in through a browser is not wired up on this channel. You do not need
+  it - this test runs signed out.
 * The licensed brand font is absent, so text renders in the bundled Noto Sans.
   Cosmetic only.
 * It is unsigned, so the tray icon does not keep a fixed position.
@@ -176,14 +199,18 @@ When you are done
 1. Quit this build from its tray icon.
 2. Start your production OpenWhispr and confirm its hotkeys, settings and
    history are unchanged.
-3. To remove every trace: delete the unzipped folder and
-   %APPDATA%\OpenWhispr-development. Optionally also delete
-   %USERPROFILE%\.cache\openwhispr\qdrant-data-validation,
-   %USERPROFILE%\.openwhispr\cli-bridge-development.json, the
-   OpenWhispr-validation entry in Windows Credential Manager, and the registry
-   key HKEY_CURRENT_USER\Software\Classes\openwhispr-dev.
-   Leave anything named OpenWhispr or openwhispr WITHOUT a -dev/-validation
-   suffix alone - that is your production install - and leave the model
-   downloads in %USERPROFILE%\.cache\openwhispr alone too.
+3. To remove every trace of THIS build: delete the unzipped folder and
+   %APPDATA%\OpenWhispr-staging. Optionally also delete
+   %USERPROFILE%\.cache\openwhispr\qdrant-data-validation-staging,
+   %USERPROFILE%\.openwhispr\cli-bridge-staging.json, the
+   OpenWhispr-validation-staging entry in Windows Credential Manager, and the
+   registry key HKEY_CURRENT_USER\Software\Classes\openwhispr-staging.
+
+   Everything above ends in -staging. Leave the -development / -validation
+   names alone unless you also want to remove the October 14 test build, and
+   leave anything named OpenWhispr or openwhispr WITHOUT a suffix alone - that
+   is your production install. Leave the model downloads in
+   %USERPROFILE%\.cache\openwhispr alone too; both builds and your install
+   share them.
 
 See BUILD-INFO.txt for the exact commit this was built from.
