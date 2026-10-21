@@ -396,3 +396,93 @@ test("a cloud guard placed after the request fails the gate", async () => {
   assert.equal(code, 1);
   assert.match(stdout, /no longer precedes the request/);
 });
+
+// --- Channel-pin regressions -------------------------------------------------
+// These guard the guarantee that a candidate handed to a tester who already has
+// an EARLIER candidate installed cannot open, mutate or delete that earlier
+// build's profile, vault entry or mutable search index. Each case is a way the
+// pin could be present in name only.
+
+test("a missing channel pin fails the gate", async () => {
+  const { code, stdout } = await verify(({ app }) => {
+    const pkg = JSON.parse(app["package.json"]);
+    delete pkg.openwhisprValidationChannel;
+    app["package.json"] = JSON.stringify(pkg, null, 2);
+  });
+  assert.equal(code, 1);
+  assert.match(stdout, /must bake in an isolated channel/);
+});
+
+test("a production channel pin fails the gate", async () => {
+  const { code, stdout } = await verify(({ app }) => {
+    const pkg = JSON.parse(app["package.json"]);
+    pkg.openwhisprValidationChannel = "production";
+    app["package.json"] = JSON.stringify(pkg, null, 2);
+  });
+  assert.equal(code, 1);
+  assert.match(stdout, /must bake in an isolated channel/);
+});
+
+test("an inert channel pin main.js never reads fails the gate", async () => {
+  // The pin is baked in, but resolveValidationChannel is called without it, so
+  // a bare double-click still falls back to the default channel.
+  const { code, stdout } = await verify(({ app }) => {
+    app["main.js"] = app["main.js"].replace(
+      "resolveValidationChannel({ pinnedChannel: VALIDATION_PINNED_CHANNEL });",
+      "resolveValidationChannel({});"
+    );
+  });
+  assert.equal(code, 1);
+  assert.match(stdout, /does not pass the baked-in channel pin/);
+});
+
+test("a Qdrant index not scoped to this candidate fails the gate", async () => {
+  const { code, stdout } = await verify(({ app }) => {
+    app["src/helpers/qdrantManager.js"] = "const d = resolveQdrantDataDirName({});\n";
+  });
+  assert.equal(code, 1);
+  assert.match(stdout, /would share a mutable, sidecar-written index with an earlier candidate/);
+});
+
+test("a vault entry not scoped to this candidate fails the gate", async () => {
+  const { code, stdout } = await verify(({ app }) => {
+    app["src/helpers/secretCrypto.js"] = "const SERVICE = resolveKeyringService({});\n";
+  });
+  assert.equal(code, 1);
+  assert.match(stdout, /would strand an earlier candidate's stored secrets/);
+});
+
+test("a reset path that would erase an earlier candidate's index fails the gate", async () => {
+  // Resolving without the channel yields the unsuffixed name, which belongs to
+  // the previous candidate — so Reset app data here would delete ITS index.
+  const { code, stdout } = await verify(({ app }) => {
+    app["src/helpers/ipcHandlers.js"] = app["src/helpers/ipcHandlers.js"].replace(
+      ", channel: VALIDATION_PINNED_CHANNEL })]) {}",
+      " })]) {}"
+    );
+  });
+  assert.equal(code, 1);
+  assert.match(stdout, /would delete an EARLIER candidate's index/);
+});
+
+test("a launcher naming a different channel than the pin fails the gate", async () => {
+  const { code, stdout } = await verify(({ unpacked }) => {
+    fs.writeFileSync(
+      path.join(unpacked, "Launch-OpenWhispr-Test.cmd"),
+      '@echo off\r\nset "OPENWHISPR_CHANNEL=development"\r\n'
+    );
+  });
+  assert.equal(code, 1);
+  assert.match(stdout, /launcher does not set OPENWHISPR_CHANNEL=staging/);
+});
+
+test("a readme naming a different profile than the pin fails the gate", async () => {
+  const { code, stdout } = await verify(({ unpacked }) => {
+    fs.writeFileSync(
+      path.join(unpacked, "READ-ME-FIRST.txt"),
+      "Test profile: %APPDATA%\\OpenWhispr-development\r\n"
+    );
+  });
+  assert.equal(code, 1);
+  assert.match(stdout, /does not name this candidate's profile/);
+});

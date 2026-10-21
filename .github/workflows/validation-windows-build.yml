@@ -75,6 +75,14 @@ jobs:
             || git fetch --no-tags origin "$sha" \
             || { echo "pinned SHA $sha is not reachable in this repository" >&2; exit 1; }
 
+      - name: Gate — every workflow shell block parses
+        shell: bash
+        run: |
+          set -euo pipefail
+          # A quoting mistake in a run: block is otherwise only found by CI
+          # itself, after a push that also triggers a Windows build.
+          node scripts/validation/check-workflow-shell.js .github/workflows/validation-windows-build.yml
+
       - name: Gate — the branch adds packaging only
         run: node scripts/validation/check-packaging-only-diff.js '${{ steps.pin.outputs.feature_sha }}'
 
@@ -216,7 +224,10 @@ jobs:
           set -euo pipefail
           out=dist/win-unpacked
           test -d "$out"
-          node -e '
+          # Quoted heredoc: the shell performs NO expansion or quote
+          # processing on the body, so apostrophes and double quotes in the
+          # JS and in BUILD-INFO prose are safe. `node -e '...'` is not.
+          node <<'NODE'
             const fs = require("fs");
             const channel = require("./electron-builder.validation-win.json")
               .extraMetadata.openwhisprValidationChannel;
@@ -278,7 +289,7 @@ jobs:
               "",
             ].join("\r\n");
             fs.writeFileSync("dist/win-unpacked/BUILD-INFO.txt", info);
-          '
+          NODE
           cat "$out/BUILD-INFO.txt"
         env:
           BUILD_LABEL: ${{ needs.guard.outputs.label }}
