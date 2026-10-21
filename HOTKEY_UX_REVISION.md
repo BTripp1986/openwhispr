@@ -5,6 +5,12 @@ This supersedes the original handoff's three separate dictation shortcut groups.
 Claude Code owns implementation. Jarvis coordinates design, review and delivery.
 Ben will acceptance-test a new isolated Windows 11 build. Do not open a PR yet.
 
+### Newer scope clarification — October 21, 19:21–19:24 UTC
+
+In the original implementation Claude session, Ben explicitly dropped migration of old beta raw/cleaned bindings: he is the only beta tester and his configuration will not carry between tests. This supersedes the original migration requirement, including older scheduler wording. Do not wipe any existing profile. Ordinary saved shortcut lists and new per-row settings still require correct persistence.
+
+Ben also requested increasing the Linux shortcut limit if it is only an implementation gap. Source inspection confirmed single-binding backend implementations; Jarvis selected inclusion of GNOME/KDE/Hyprland dictation multi-binding support on that basis. Plan per-binding identity, native dispatch, stale cleanup and transactional rollback. Tests on this host do not establish physical Linux desktop acceptance. The direct-human excerpts and supervisor decision are recorded in the parent STATUS.md and evidence/ux-revision-20261021/HUMAN_SCOPE_UPDATES.json.
+
 ## Repository and starting point
 
 - Upstream: https://github.com/OpenWhispr/openwhispr
@@ -53,14 +59,14 @@ The approved concept image is `HOTKEY_UX_MOCKUP.png` beside this brief. It shows
 - Cross-action conflicts and duplicate detection must cover every row, normalized key aliases, and Voice Assistant/Translation/Meeting shortcuts. Changing a row's cleanup mode must not create a second competing registration of the same key combination.
 - Registration failure must leave UI, persisted shortcuts/modes and actual active bindings consistent. Add/edit/remove/reset and restart must retain each shortcut's intended mode, without attaching a removed row's override to another row.
 - Preserve existing stored ordinary shortcut lists as Use app setting; do not pin them based on today's global preference.
-- Preserve users of the earlier test build: import old raw/cleaned bindings into the consolidated UI with Always off/Always on semantics, once and without duplicates or repeated resurrection after removal. Design migration and persistence together. Handle missing, stale or malformed metadata defensively.
+- No import of the earlier beta raw/cleaned configuration is required, per Ben's newer explicit correction. Remove obsolete runtime registrations and UI paths; do not delete or reset an existing profile. Handle missing, stale or malformed new per-row metadata defensively.
 - Cleaned mode uses the configured provider/model and existing clear unavailable/error handling; never silently claim cleanup succeeded when it did not.
 - Preserve recording cancellation, Voice Assistant/wake-word routing, translation, meetings and regular button/tray-started dictation. Avoid unrelated architecture changes.
 - Localize new/changed strings in all repository locales (11 at the previous baseline); follow current localization checks. Keep keyboard navigation, accessible labels, focus and disclosure state correct.
 
 ## Implementation process and review
 
-Start with a concise plan based on current code: storage/migration, registration routing, activation-mode support, settings UI and regression tests. Jarvis will review the plan before implementation; routine choices do not require Ben to repeat his approval.
+Start with a concise plan based on current code: storage/backward compatibility for ordinary lists, registration routing, activation-mode support, settings UI and regression tests. Jarvis will review the plan before implementation; routine choices do not require Ben to repeat his approval.
 
 Likely starting points: `src/components/SettingsPage.tsx`, `src/components/ui/HotkeyListInput.tsx`, `HotkeyInput.tsx`, settings store/persistence, hotkey manager/native listener registrations, IPC/preload/window callbacks, recording hooks, audio manager and route helpers. Inspect actual files rather than relying on old line numbers.
 
@@ -68,7 +74,7 @@ Implementation owner works only in `repo/` and pushes the feature branch to the 
 
 ## Verification
 
-Use Node 24 per `.nvmrc`. Run focused tests for per-shortcut modes, migration/restart, conflicts/rollback, add/edit/remove/reset, global-setting changes, cancellation/overlap, activation modes and routing regressions. Retain existing meaningful pipeline tests. Run supported lint, typecheck, formatting, localization, renderer build and full test suite. Preserve native SQLite ABI handling from the previous validated workflow; never mask failing exit codes with pipes. Report pre-existing failures and skipped tests explicitly.
+Use Node 24 per `.nvmrc`. Run focused tests for per-shortcut modes, ordinary-list compatibility/restart, conflicts/rollback, add/edit/remove/reset, global-setting changes, cancellation/overlap, activation modes and routing regressions. Retain existing meaningful pipeline tests. Run supported lint, typecheck, formatting, localization, renderer build and full test suite. Preserve native SQLite ABI handling from the previous validated workflow; never mask failing exit codes with pipes. Report pre-existing failures and skipped tests explicitly.
 
 Produce actual rendered settings evidence with synthetic data: beginner/collapsed state, Ben's configured two-row state, dropdown open, relevant validation/error state. The concept image is not evidence of implementation. Prefer real application/component screenshots over hand-built facsimiles. Include compact controls and no secrets or user transcripts.
 
@@ -80,10 +86,10 @@ Reuse the reviewed fork-only native Windows Actions build and its isolated unpac
 
 The previous isolation protections must remain: separate profile from production, automatic updates disabled even if the EXE is opened directly, no production install overwrite, no production autostart/protocol/CLI-bridge mutation, protected shared model assets and separate mutable indexes. See `REVIEW_AND_BUILD_HANDOFF.md` in the prior validation evidence for the complete policy and checks. Do not package real `.env`, credentials, settings, history or transcripts.
 
-Ben should only need to download, extract and run a safe launcher; no Node/npm/git/build tools. Preserve his existing isolated test profile when safe so the old test bindings exercise migration. State any one-time profile steps explicitly; do not wipe settings to make migration appear to pass.
+Ben should only need to download, extract and run a safe launcher; no Node/npm/git/build tools. An unused isolated revision profile is permitted by Ben's migration correction. Do not wipe or mutate his prior test or production profile; state any one-time profile steps explicitly.
 
 Build only after the exact feature candidate has passed review/checks. Verify the downloaded artifact's digest, inner ZIP/EXE hashes, exact feature and validation pins, packaged UI/logic content and static isolation checks. Keep evidence separate from real Windows/OpenAI acceptance.
 
-Deliver the new URL, expiration, exact SHAs, concise setup and acceptance checklist: both fixed bindings with global cleanup ON then OFF; Use app setting behavior; unchanged global preference; persistence/restart/migration; key changes/conflicts; cancellation; existing recording modes. Ben uses his actual OpenAI STT and cleanup configuration, entered only through the app's masked field. No credentials in chat or logs.
+Deliver the new URL, expiration, exact SHAs, concise setup and acceptance checklist: both fixed bindings with global cleanup ON then OFF; Use app setting behavior; unchanged global preference; persistence/restart; key changes/conflicts; cancellation; existing recording modes. Ben uses his actual OpenAI STT and cleanup configuration, entered only through the app's masked field. No credentials in chat or logs.
 
 No upstream PR (including draft), merge, release publication or production configuration changes. Ben must accept the revised exact Windows candidate before Jarvis opens a PR.
