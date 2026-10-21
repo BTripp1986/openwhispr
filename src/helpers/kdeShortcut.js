@@ -1,4 +1,5 @@
 const debugLogger = require("./debugLogger");
+const { slotOfBindingId } = require("./hotkeyBindingId");
 
 let dbus = null;
 
@@ -203,7 +204,7 @@ class KDEShortcutManager {
         const callback =
           this.callbacks.get(shortcutUnique) || this._findCallbackByFriendlyName(shortcutUnique);
         if (callback) {
-          callback(undefined, "down");
+          callback(shortcutUnique, "down");
         } else {
           debugLogger.log("[KDEShortcut] No callback found for", {
             shortcutUnique,
@@ -216,8 +217,11 @@ class KDEShortcutManager {
         const slotName = this.callbacks.has(shortcutUnique)
           ? shortcutUnique
           : this._findSlotByFriendlyName(shortcutUnique);
-        if (slotName !== "dictation") return;
-        this.callbacks.get(slotName)?.(undefined, "up");
+        // Any dictation row, not just the first: "dictation", "dictation#1", …
+        // all hold to speak, and only the binding that started a push may end
+        // it. Other slots are tap-only and have no release semantics.
+        if (!slotName || slotOfBindingId(slotName) !== "dictation") return;
+        this.callbacks.get(slotName)?.(slotName, "up");
       });
 
       this.componentProxy = iface;

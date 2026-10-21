@@ -14,8 +14,6 @@ const SLOT_TOGGLE_METHOD = {
   meeting: "ToggleMeeting",
   voiceAgent: "ToggleVoiceAgent",
   translation: "ToggleTranslation",
-  rawDictation: "ToggleRawDictation",
-  cleanedDictation: "ToggleCleanedDictation",
 };
 
 // Map Electron modifier names to Hyprland modifier names
@@ -777,8 +775,8 @@ class HyprlandShortcutManager {
     return this._registerForSlot(hotkey, "dictation", null, isPushToTalk);
   }
 
-  registerSlotKeybinding(hotkey, slotName, callback) {
-    return this._registerForSlot(hotkey, slotName, callback, false);
+  registerSlotKeybinding(hotkey, slotName, callback, isPushToTalk = false) {
+    return this._registerForSlot(hotkey, slotName, callback, isPushToTalk);
   }
 
   updateKeybinding(hotkey, isPushToTalk = false) {

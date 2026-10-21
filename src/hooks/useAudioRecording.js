@@ -994,16 +994,16 @@ export const useAudioRecording = (toast, options = {}) => {
       }
     };
 
-    const handleStart = async () => {
-      await performStartRecording();
+    const handleStart = async (payload) => {
+      await performStartRecording({ cleanupOverride: payload?.cleanupOverride ?? null });
     };
 
     const handleStop = async () => {
       await performStopRecording();
     };
 
-    const disposeToggle = window.electronAPI.onToggleDictation(() => {
-      handleToggle();
+    const disposeToggle = window.electronAPI.onToggleDictation((payload) => {
+      handleToggle({ cleanupOverride: payload?.cleanupOverride ?? null });
       onToggle?.();
     });
 
@@ -1017,21 +1017,8 @@ export const useAudioRecording = (toast, options = {}) => {
       onToggle?.();
     });
 
-    // The raw and cleaned dictation hotkeys pick this recording's cleanup and
-    // nothing else: still ordinary dictation, never the assistant, and the
-    // saved cleanup preference is left alone.
-    const disposeRawDictationToggle = window.electronAPI.onToggleRawDictation?.(() => {
-      handleToggle({ cleanupOverride: "raw" });
-      onToggle?.();
-    });
-
-    const disposeCleanedDictationToggle = window.electronAPI.onToggleCleanedDictation?.(() => {
-      handleToggle({ cleanupOverride: "cleaned" });
-      onToggle?.();
-    });
-
-    const disposeStart = window.electronAPI.onStartDictation?.(() => {
-      handleStart();
+    const disposeStart = window.electronAPI.onStartDictation?.((payload) => {
+      handleStart(payload);
       onToggle?.();
     });
 
@@ -1077,8 +1064,6 @@ export const useAudioRecording = (toast, options = {}) => {
       disposeToggle?.();
       disposeVoiceAgentToggle?.();
       disposeTranslationToggle?.();
-      disposeRawDictationToggle?.();
-      disposeCleanedDictationToggle?.();
       disposeStart?.();
       disposePrepare?.();
       disposeCancelPreparation?.();

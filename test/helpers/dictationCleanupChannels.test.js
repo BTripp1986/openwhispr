@@ -6,31 +6,9 @@ const vm = require("node:vm");
 const Module = require("node:module");
 
 // A typo in one of these channel names only shows up when a user presses the
-// key on a real desktop, so pin both halves: what WindowManager pushes and what
-// preload listens for, plus the invoke channels the Settings rows call.
-
-const CLEANUP_MODE_CHANNELS = [
-  {
-    mode: "raw",
-    send: "sendToggleRawDictation",
-    toggleChannel: "toggle-raw-dictation",
-    listener: "onToggleRawDictation",
-    update: "updateRawDictationHotkey",
-    updateChannel: "update-raw-dictation-hotkey",
-    read: "getRawDictationKey",
-    readChannel: "get-raw-dictation-key",
-  },
-  {
-    mode: "cleaned",
-    send: "sendToggleCleanedDictation",
-    toggleChannel: "toggle-cleaned-dictation",
-    listener: "onToggleCleanedDictation",
-    update: "updateCleanedDictationHotkey",
-    updateChannel: "update-cleaned-dictation-hotkey",
-    read: "getCleanedDictationKey",
-    readChannel: "get-cleaned-dictation-key",
-  },
-];
+// key on a real desktop, so pin both halves: what WindowManager pushes with
+// the cleanup override, what preload forwards, and the invoke channels the
+// Settings section calls to commit the rows.
 
 // WindowManager pulls in electron and its sibling managers at require time;
 // only the pieces the dictation toggle touches need to behave.
@@ -142,65 +120,112 @@ function loadPreloadApi() {
   return { api: exposedApi, listeners, invocations };
 }
 
-test("each cleanup-mode hotkey pushes the channel its preload listener subscribes to", () => {
+test("the dictation toggle carries its row's cleanup override to the renderer", () => {
+  const { manager, sent } = makeManager();
+
+  manager.sendToggleDictation({ cleanupOverride: "cleaned" });
+
+  // Pre-warms the mic one message ahead of the toggle, and both messages
+  // describe the SAME recording: the prepare that opens the mic must not
+  // disagree with the toggle about which cleanup was asked for.
+  assert.deepEqual(sent, [
+    {
+      channel: "prepare-dictation",
+      payload: { inputKind: "dictation", cleanupOverride: "cleaned" },
+    },
+    { channel: "toggle-dictation", payload: { cleanupOverride: "cleaned" } },
+  ]);
+});
+
+test("a row with no override reports the app setting, not a mode", () => {
+  const { manager, sent } = makeManager();
+
+  manager.sendToggleDictation({ cleanupOverride: null });
+
+  assert.deepEqual(sent.at(-1), {
+    channel: "toggle-dictation",
+    payload: { cleanupOverride: null },
+  });
+});
+
+test("the start message carries the override captured at key-down", () => {
+  const { manager, sent } = makeManager();
+
+  manager.sendStartDictation({ cleanupOverride: "raw" });
+
+  assert.deepEqual(sent, [{ channel: "start-dictation", payload: { cleanupOverride: "raw" } }]);
+});
+
+// preload used to drop every argument for these two channels, which is how a
+// per-row mode would reach main and then vanish on the way to the recording.
+test("preload forwards the payload for every channel that carries the override", () => {
   const { api, listeners } = loadPreloadApi();
 
-  for (const entry of CLEANUP_MODE_CHANNELS) {
-    const { manager, channels } = makeManager();
-
-    manager[entry.send]();
-
-    // Pre-warms the mic one message ahead of the toggle, like every other
-    // dictation hotkey.
-    assert.deepEqual(
-      channels(),
-      ["prepare-dictation", entry.toggleChannel],
-      `${entry.mode} must push ${entry.toggleChannel}`
-    );
-
+  for (const [channel, listenerName] of [
+    ["toggle-dictation", "onToggleDictation"],
+    ["start-dictation", "onStartDictation"],
+    ["prepare-dictation", "onPrepareDictation"],
+  ]) {
     const received = [];
-    const dispose = api[entry.listener]((...args) => received.push(args));
-    const listener = listeners.get(entry.toggleChannel);
-    assert.ok(listener, `preload must subscribe to ${entry.toggleChannel}`);
+    const dispose = api[listenerName]((...args) => received.push(args));
+    const listener = listeners.get(channel);
+    assert.ok(listener, `preload must subscribe to ${channel}`);
     // The Electron event object must not reach the renderer callback.
-    listener({ sender: "electron-event" });
-    assert.deepEqual(received, [[]]);
+    listener({ sender: "electron-event" }, { cleanupOverride: "cleaned" });
+    assert.deepEqual(received, [[{ cleanupOverride: "cleaned" }]], channel);
     dispose();
-    assert.equal(listeners.has(entry.toggleChannel), false, "the listener must be removable");
+    assert.equal(listeners.has(channel), false, `${channel} listener must be removable`);
   }
 });
 
-test("the prepare message reports an ordinary dictation, not a new input kind", () => {
-  for (const entry of CLEANUP_MODE_CHANNELS) {
-    const { manager, sent } = makeManager();
-    manager[entry.send]();
-    assert.deepEqual(sent[0], {
-      channel: "prepare-dictation",
-      payload: { inputKind: "dictation" },
-    });
-  }
-});
-
-test("the Settings rows invoke the hotkey channels the main process handles", async () => {
+test("the Settings section invokes the row channels the main process handles", async () => {
   const { api, invocations } = loadPreloadApi();
+  const rows = [{ key: "Control+Shift+Space", mode: "cleaned" }];
 
-  for (const entry of CLEANUP_MODE_CHANNELS) {
-    invocations.length = 0;
-    await api[entry.update]("Control+Shift+F7");
-    assert.deepEqual(invocations, [[entry.updateChannel, "Control+Shift+F7"]]);
+  invocations.length = 0;
+  await api.applyDictationHotkeys({ rows });
+  assert.deepEqual(invocations, [["apply-dictation-hotkeys", { rows }]]);
 
-    invocations.length = 0;
-    await api[entry.read]();
-    assert.deepEqual(invocations, [[entry.readChannel]]);
-  }
+  invocations.length = 0;
+  await api.getDictationHotkeyConfig();
+  assert.deepEqual(invocations, [["get-dictation-hotkey-config"]]);
 });
 
-// The handlers are registered from a list; a missing entry would leave the
-// Settings row invoking a channel nobody answers.
-test("the main process registers a handler for every cleanup-mode channel", () => {
-  const source = fs.readFileSync(path.join(__dirname, "../../src/helpers/ipcHandlers.js"), "utf8");
-  for (const entry of CLEANUP_MODE_CHANNELS) {
-    assert.match(source, new RegExp(`"${entry.updateChannel}"`), entry.updateChannel);
-    assert.match(source, new RegExp(`"${entry.readChannel}"`), entry.readChannel);
+// The beta put cleanup in two extra hotkey sections. Those channels are gone;
+// a leftover handler or preload member would be a shortcut nobody can reach
+// from the UI, still registered against the user's keys.
+test("the retired cleanup-mode channels are gone from main and preload", () => {
+  const { api } = loadPreloadApi();
+  const mainSource = fs.readFileSync(
+    path.join(__dirname, "../../src/helpers/ipcHandlers.js"),
+    "utf8"
+  );
+  const windowManagerSource = fs.readFileSync(
+    path.join(__dirname, "../../src/helpers/windowManager.js"),
+    "utf8"
+  );
+
+  for (const channel of [
+    "toggle-raw-dictation",
+    "toggle-cleaned-dictation",
+    "update-raw-dictation-hotkey",
+    "update-cleaned-dictation-hotkey",
+    "get-raw-dictation-key",
+    "get-cleaned-dictation-key",
+  ]) {
+    assert.doesNotMatch(mainSource, new RegExp(`"${channel}"`), channel);
+  }
+  for (const member of [
+    "onToggleRawDictation",
+    "onToggleCleanedDictation",
+    "updateRawDictationHotkey",
+    "updateCleanedDictationHotkey",
+    "getRawDictationKey",
+    "getCleanedDictationKey",
+  ]) {
+    assert.equal(api[member], undefined, member);
+  }
+  for (const method of ["sendToggleRawDictation", "sendToggleCleanedDictation"]) {
+    assert.doesNotMatch(windowManagerSource, new RegExp(method), method);
   }
 });

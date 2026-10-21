@@ -5,12 +5,7 @@ const os = require("node:os");
 const path = require("node:path");
 const Module = require("node:module");
 
-const HOTKEY_ENV_KEYS = [
-  "VOICE_AGENT_KEY",
-  "CHAT_AGENT_KEY",
-  "RAW_DICTATION_KEY",
-  "CLEANED_DICTATION_KEY",
-];
+const HOTKEY_ENV_KEYS = ["VOICE_AGENT_KEY", "CHAT_AGENT_KEY"];
 
 function snapshotEnvironment() {
   return new Map(
@@ -114,58 +109,6 @@ test("adopts a legacy chat-agent hotkey as the voice-agent hotkey", async (t) =>
   assert.equal(process.env.CHAT_AGENT_KEY, undefined);
   assert.match(persistedEnv, /^VOICE_AGENT_KEY=CommandOrControl\+;$/m);
   assert.doesNotMatch(persistedEnv, /^CHAT_AGENT_KEY=/m);
-});
-
-// The raw and cleaned dictation hotkeys persist like every other hotkey slot:
-// an empty value clears the entry rather than leaving a stale binding behind.
-test("the raw and cleaned dictation hotkeys round-trip through the .env file", async (t) => {
-  const userDataDirectory = fs.mkdtempSync(
-    path.join(os.tmpdir(), "openwhispr-cleanup-mode-hotkeys-")
-  );
-  const environmentSnapshot = snapshotEnvironment();
-  const originalResourcesPath = process.resourcesPath;
-  process.resourcesPath = userDataDirectory;
-  delete process.env.RAW_DICTATION_KEY;
-  delete process.env.CLEANED_DICTATION_KEY;
-
-  t.after(() => {
-    restoreEnvironment(environmentSnapshot);
-    process.resourcesPath = originalResourcesPath;
-    fs.rmSync(userDataDirectory, { recursive: true, force: true });
-  });
-
-  installDotenvStub(t);
-  const EnvironmentManager = loadEnvironmentManager(t, userDataDirectory);
-  const environmentManager = new EnvironmentManager();
-  const saveAllKeysToEnvFile = environmentManager.saveAllKeysToEnvFile.bind(environmentManager);
-  let persistence;
-  environmentManager.saveAllKeysToEnvFile = () => {
-    persistence = saveAllKeysToEnvFile();
-    return persistence;
-  };
-  const persistedEnvPath = path.join(userDataDirectory, ".env");
-
-  assert.ok(!environmentManager.getRawDictationKey());
-  assert.ok(!environmentManager.getCleanedDictationKey());
-
-  environmentManager.saveRawDictationKey("Control+Shift+R");
-  environmentManager.saveCleanedDictationKey("Control+Shift+C");
-  await persistence;
-
-  assert.equal(environmentManager.getRawDictationKey(), "Control+Shift+R");
-  assert.equal(environmentManager.getCleanedDictationKey(), "Control+Shift+C");
-  let persistedEnv = fs.readFileSync(persistedEnvPath, "utf8");
-  assert.match(persistedEnv, /^RAW_DICTATION_KEY=Control\+Shift\+R$/m);
-  assert.match(persistedEnv, /^CLEANED_DICTATION_KEY=Control\+Shift\+C$/m);
-
-  environmentManager.saveRawDictationKey("");
-  await persistence;
-
-  assert.ok(!environmentManager.getRawDictationKey());
-  assert.equal(environmentManager.getCleanedDictationKey(), "Control+Shift+C");
-  persistedEnv = fs.readFileSync(persistedEnvPath, "utf8");
-  assert.doesNotMatch(persistedEnv, /^RAW_DICTATION_KEY=Control/m);
-  assert.match(persistedEnv, /^CLEANED_DICTATION_KEY=Control\+Shift\+C$/m);
 });
 
 test("device cleanup clears persisted settings and encrypted secret files", async (t) => {

@@ -8,9 +8,9 @@ const {
   installHookDom,
 } = require("../lib/rendererTestHarness");
 
-// The raw and cleaned dictation hotkeys each start one recording in their own
-// mode. Every other start must clear that mode, and a retry must replay the
-// mode the recording was made in.
+// A dictation shortcut carries its row's cleanup override in the toggle
+// payload, and that recording runs in that mode. Every other start must clear
+// the mode, and a retry must replay the mode its recording was made in.
 const FAKE_AUDIO_MANAGER_SOURCE = `
 export default class FakeAudioManager {
   constructor() {
@@ -123,8 +123,6 @@ async function mountHarness(t) {
         onToggleDictation: listenerFor("dictation"),
         onToggleVoiceAgent: listenerFor("voiceAgent"),
         onToggleTranslation: listenerFor("translation"),
-        onToggleRawDictation: listenerFor("rawDictation"),
-        onToggleCleanedDictation: listenerFor("cleanedDictation"),
         onStartDictation: noopDispose,
         onPrepareDictation: noopDispose,
         onCancelDictationPreparation: noopDispose,
@@ -198,9 +196,9 @@ async function mountHarness(t) {
     starts: () => globalThis.__cleanupModeStarts,
     stops: () => globalThis.__cleanupModeStops,
     setterCalls: () => globalThis.__cleanupModeSetterCalls,
-    press: async (name) => {
+    press: async (name, payload) => {
       assert.ok(listeners[name], `the hook must subscribe to the ${name} toggle`);
-      await React.act(async () => listeners[name]());
+      await React.act(async () => listeners[name](payload));
       await flush();
     },
     setRecording: async (isRecording) => {
@@ -215,19 +213,22 @@ async function mountHarness(t) {
   };
 }
 
-test("each dictation hotkey starts its recording in its own cleanup mode", async (t) => {
+test("each dictation row starts its recording in its own cleanup mode", async (t) => {
   const harness = await mountHarness(t);
 
-  for (const hotkey of [
-    "rawDictation",
-    "cleanedDictation",
-    "dictation",
-    "translation",
-    "voiceAgent",
-  ]) {
-    await harness.press(hotkey);
-    // Toggle the recording off again so the next hotkey starts a fresh one.
-    await harness.press(hotkey);
+  // The rows a user configured, plus the two other slots, which never pin a
+  // mode of their own.
+  const presses = [
+    ["dictation", { cleanupOverride: "raw" }],
+    ["dictation", { cleanupOverride: "cleaned" }],
+    ["dictation", { cleanupOverride: null }],
+    ["translation", undefined],
+    ["voiceAgent", undefined],
+  ];
+  for (const [hotkey, payload] of presses) {
+    await harness.press(hotkey, payload);
+    // Toggle the recording off again so the next press starts a fresh one.
+    await harness.press(hotkey, payload);
   }
 
   assert.deepEqual(harness.starts(), [
@@ -237,31 +238,31 @@ test("each dictation hotkey starts its recording in its own cleanup mode", async
     { voiceAgentRequested: false, translationRequested: true, cleanupOverride: null },
     { voiceAgentRequested: true, translationRequested: false, cleanupOverride: null },
   ]);
-  // Set on every start, so no recording can inherit the previous mode.
+  // Set on every start, so no recording can inherit the previous row's mode.
   assert.deepEqual(harness.setterCalls(), ["raw", "cleaned", null, null, null]);
 });
 
-// The opposite-mode key during capture is a stop, like any other dictation
-// hotkey: it must not restart the recording in the other mode.
-test("the opposite mode pressed while recording stops instead of switching", async (t) => {
+// Another row pressed during a recording is a stop, like any other dictation
+// hotkey: it must not restart the recording in that row's mode.
+test("another row pressed while recording stops instead of switching", async (t) => {
   const harness = await mountHarness(t);
 
-  await harness.press("rawDictation");
+  await harness.press("dictation", { cleanupOverride: "raw" });
   await harness.setRecording(true);
-  await harness.press("cleanedDictation");
+  await harness.press("dictation", { cleanupOverride: "cleaned" });
 
   assert.equal(harness.starts().length, 1, "no second recording may start");
   assert.equal(harness.starts()[0].cleanupOverride, "raw");
-  assert.equal(harness.stops(), 1, "the opposite-mode press stops the recording");
+  assert.equal(harness.stops(), 1, "the other row's press stops the recording");
   assert.deepEqual(harness.setterCalls(), ["raw"]);
 });
 
-test("a repeated press of the same hotkey while recording does not re-arm the mode", async (t) => {
+test("a repeated press of the same row while recording does not re-arm the mode", async (t) => {
   const harness = await mountHarness(t);
 
-  await harness.press("cleanedDictation");
+  await harness.press("dictation", { cleanupOverride: "cleaned" });
   await harness.setRecording(true);
-  await harness.press("cleanedDictation");
+  await harness.press("dictation", { cleanupOverride: "cleaned" });
 
   assert.equal(harness.starts().length, 1);
   assert.deepEqual(harness.setterCalls(), ["cleaned"]);
@@ -272,8 +273,8 @@ test("a repeated press of the same hotkey while recording does not re-arm the mo
 test("retrying a recording replays its cleanup mode", async (t) => {
   const harness = await mountHarness(t);
 
-  await harness.press("rawDictation");
-  await harness.press("rawDictation");
+  await harness.press("dictation", { cleanupOverride: "raw" });
+  await harness.press("dictation", { cleanupOverride: "raw" });
 
   // startRecording is the retry entry point the dictation-error pill uses: the
   // pill replays the mode its recording was made in.
@@ -282,7 +283,7 @@ test("retrying a recording replays its cleanup mode", async (t) => {
   });
   assert.equal(harness.starts().at(-1).cleanupOverride, "cleaned");
 
-  await harness.press("cleanedDictation");
+  await harness.press("dictation", { cleanupOverride: "cleaned" });
   await React.act(async () => {
     await harness.api.startRecording();
   });
