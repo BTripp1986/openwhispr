@@ -16,7 +16,7 @@ test("no override follows the global cleanup preference", async () => {
       useCleanupPreference: true,
       cleanupConfigured: true,
     }),
-    { selected: true, reachable: true, unavailable: false }
+    { selected: true, reachable: true }
   );
   assert.deepEqual(
     resolveCleanupSelection({
@@ -24,7 +24,7 @@ test("no override follows the global cleanup preference", async () => {
       useCleanupPreference: false,
       cleanupConfigured: true,
     }),
-    { selected: false, reachable: false, unavailable: false }
+    { selected: false, reachable: false }
   );
 });
 
@@ -38,7 +38,7 @@ test("raw skips cleanup whether the preference is on or off", async () => {
         useCleanupPreference,
         cleanupConfigured: true,
       }),
-      { selected: false, reachable: false, unavailable: false },
+      { selected: false, reachable: false },
       `preference ${useCleanupPreference}`
     );
   }
@@ -54,15 +54,16 @@ test("cleaned runs cleanup whether the preference is on or off", async () => {
         useCleanupPreference,
         cleanupConfigured: true,
       }),
-      { selected: true, reachable: true, unavailable: false },
+      { selected: true, reachable: true },
       `preference ${useCleanupPreference}`
     );
   }
 });
 
-// The cleaned hotkey cannot manufacture missing configuration: it reports the
-// gap so the transcript can still paste without passing as cleaned.
-test("cleaned with no cleanup model configured is unreachable and reported", async () => {
+// The cleaned hotkey cannot manufacture missing configuration: it still asks
+// for cleanup, so the recording is unreachable and the transcript pastes as
+// spoken instead of passing as cleaned.
+test("cleaned with no cleanup model configured is selected but unreachable", async () => {
   const { resolveCleanupSelection } = await load();
 
   assert.deepEqual(
@@ -71,30 +72,31 @@ test("cleaned with no cleanup model configured is unreachable and reported", asy
       useCleanupPreference: false,
       cleanupConfigured: false,
     }),
-    { selected: true, reachable: false, unavailable: true }
+    { selected: true, reachable: false }
   );
 });
 
-// Raw asked for no cleanup, so an unconfigured model is not a problem to report.
-test("raw and the plain preference never report cleanup as unavailable", async () => {
-  const { resolveCleanupSelection } = await load();
+// What the user is TOLD about that gap is upstream's unconfigured-cleanup
+// notice, which reads the cleanup preference. A pinned row IS the preference
+// for its own recording, so the notice follows the row: Always on warns about
+// a setup it cannot run even while the global preference is off, and Always
+// off stays silent even while the preference is on.
+test("the unconfigured-cleanup notice follows the row's own choice", async () => {
+  const { cleanupUnconfiguredNotice } = await load();
+  const unreachable = { skipped: true, cleanupReachable: false };
 
-  assert.equal(
-    resolveCleanupSelection({
-      cleanupOverride: "raw",
-      useCleanupPreference: true,
-      cleanupConfigured: false,
-    }).unavailable,
-    false
-  );
-  assert.equal(
-    resolveCleanupSelection({
-      cleanupOverride: null,
-      useCleanupPreference: true,
-      cleanupConfigured: false,
-    }).unavailable,
-    false
-  );
+  const pinnedOn = cleanupUnconfiguredNotice(null, {
+    ...unreachable,
+    settings: { useCleanupModel: true },
+  });
+  assert.equal(pinnedOn.notice?.messageKey, "hooks.audioRecording.cleanupUnconfigured");
+
+  const pinnedOff = cleanupUnconfiguredNotice(null, {
+    ...unreachable,
+    settings: { useCleanupModel: false },
+  });
+  assert.equal(pinnedOff.notice, null);
+  assert.equal(pinnedOff.forget, true, "nothing was asked for, so nothing is remembered");
 });
 
 test("an unknown override value falls back to the preference", async () => {

@@ -35,6 +35,12 @@ const KDE_FAILURE_REASONS = {
   "modifier-only": (hotkey) => i18nMain.t("hotkey.errors.osReserved", { hotkey }),
 };
 
+// Why GNOME can't grab a key the active keymap maps elsewhere (see gnomeShortcut.js)
+const GNOME_FAILURE_REASONS = {
+  keysym_missing: (hotkey) => i18nMain.t("hotkey.errors.keyNotInKeymap", { hotkey }),
+  keysym_reserved: (hotkey) => i18nMain.t("hotkey.errors.keyReservedByGnome", { hotkey }),
+};
+
 // Right-side single modifiers are handled by native listeners, not globalShortcut
 const RIGHT_SIDE_MODIFIER_PATTERN =
   /^Right(Control|Ctrl|Alt|Option|Shift|Command|Cmd|Super|Meta|Win)$/i;
@@ -326,13 +332,13 @@ class HotkeyManager extends EventEmitter {
       this.gnomeManager.setBindingCallback?.(bindingId, boundCallback);
       if (isPtt) {
         if (isModifierOnlyHotkey(hotkey)) return { ok: false, reason: "modifier-only" };
-        const ok = await this.gnomeManager.registerPushToTalk(hotkey, boundCallback, bindingId);
-        return { ok: ok === true };
+        const result = await this.gnomeManager.registerPushToTalk(hotkey, boundCallback, bindingId);
+        return { ok: result === true, reason: result };
       }
       const gnomeHotkey = GnomeShortcutManager.convertToGnomeFormat(hotkey);
       if (!gnomeHotkey) return { ok: false };
-      const ok = await this.gnomeManager.registerKeybinding(gnomeHotkey, bindingId);
-      return { ok: ok === true };
+      const result = await this.gnomeManager.registerKeybinding(gnomeHotkey, bindingId);
+      return { ok: result === true, reason: result };
     }
     if (backend === "kde") {
       const result = await this.kdeManager.registerKeybinding(
@@ -361,16 +367,25 @@ class HotkeyManager extends EventEmitter {
   // Fallback when a GNOME manager offers no batch helper: bind row by row and
   // report whether every one took.
   async _registerBindingsIndividually(backend, slotName, rows) {
-    let allOk = true;
+    // true, or the first reason a row gave: GNOME says why it cannot grab a
+    // key (#2622) and the caller turns that into the message the user reads,
+    // so flattening it to false here would lose it.
+    let failure = null;
     for (const { bindingId, hotkey, callback } of rows) {
       try {
-        const { ok } = await this._registerBinding(backend, bindingId, slotName, hotkey, callback);
-        if (!ok) allOk = false;
+        const { ok, reason } = await this._registerBinding(
+          backend,
+          bindingId,
+          slotName,
+          hotkey,
+          callback
+        );
+        if (!ok && failure === null) failure = typeof reason === "string" ? reason : false;
       } catch {
-        allOk = false;
+        if (failure === null) failure = false;
       }
     }
-    return allOk;
+    return failure === null ? true : failure;
   }
 
   async _registerDesktopBindings(backend, slotName, hotkeys, callback) {
@@ -379,6 +394,29 @@ class HotkeyManager extends EventEmitter {
     for (const hotkey of hotkeys) {
       const conflict = this._findSlotConflict(slotName, hotkey);
       if (conflict) return conflict;
+    }
+
+    // GNOME can only grab a keysym the active keymap carries, and that is
+    // knowable before any teardown: a row GNOME cannot grab is refused with
+    // its own reason while the working rows stay bound (upstream #2622).
+    if (backend === "gnome") {
+      for (const hotkey of hotkeys) {
+        const accelerator = GnomeShortcutManager.convertToGnomeFormat(hotkey);
+        const reason = accelerator
+          ? this.gnomeManager.resolveFunctionKey?.(accelerator)?.reason
+          : null;
+        if (reason) {
+          debugLogger.log(
+            `[HotkeyManager] GNOME cannot grab "${hotkey}" for slot "${slotName}": ${reason}`
+          );
+          return {
+            success: false,
+            error:
+              GNOME_FAILURE_REASONS[reason]?.(hotkey) ||
+              i18nMain.t("hotkey.errors.registrationFailed", { hotkey }),
+          };
+        }
+      }
     }
 
     const slot = this._ensureSlot(slotName);
@@ -398,7 +436,7 @@ class HotkeyManager extends EventEmitter {
           typeof this.gnomeManager.registerPushToTalkBindings === "function"
             ? await this.gnomeManager.registerPushToTalkBindings(rows).catch(() => false)
             : await this._registerBindingsIndividually(backend, slotName, rows);
-        if (ok) restoredIds.push(...rows.map(({ bindingId }) => bindingId));
+        if (ok === true) restoredIds.push(...rows.map(({ bindingId }) => bindingId));
       } else {
         for (const [index, hotkey] of previousHotkeys.entries()) {
           const bindingId = bindingIdFor(slotName, index);
@@ -447,13 +485,19 @@ class HotkeyManager extends EventEmitter {
       // A manager without the batch helper (an older stub, or a partially
       // mocked one) must not silently leave the slot with no bindings at all.
       const canBatch = typeof this.gnomeManager.registerPushToTalkBindings === "function";
-      const ok = modifierOnly
+      const batched = modifierOnly
         ? false
         : canBatch
           ? await this.gnomeManager.registerPushToTalkBindings(rows).catch(() => false)
           : await this._registerBindingsIndividually(backend, slotName, rows);
-      if (ok) registered.push(...attempted);
-      else failure = { hotkey: modifierOnly || hotkeys[0], reason: "portal" };
+      if (batched === true) registered.push(...attempted);
+      else
+        failure = {
+          hotkey: modifierOnly || hotkeys[0],
+          // A keymap refusal names itself ("keysym_missing"); anything else is
+          // the portal declining the session.
+          reason: typeof batched === "string" ? batched : "portal",
+        };
     } else {
       for (const [index, hotkey] of hotkeys.entries()) {
         const bindingId = bindingIdFor(slotName, index);
@@ -479,6 +523,7 @@ class HotkeyManager extends EventEmitter {
       const restoredCleanly = (await restore(generation)) && unwound;
       const reason =
         (backend === "kde" && KDE_FAILURE_REASONS[failure.reason]?.(failure.hotkey)) ||
+        (backend === "gnome" && GNOME_FAILURE_REASONS[failure.reason]?.(failure.hotkey)) ||
         i18nMain.t("hotkey.errors.registrationFailed", { hotkey: failure.hotkey });
       debugLogger.log(
         `[HotkeyManager] ${backend} registration failed for slot "${slotName}" ("${failure.hotkey}")`,
@@ -753,6 +798,10 @@ class HotkeyManager extends EventEmitter {
     }
 
     let success = true;
+    // The localized reason the attempt failed, so a GNOME keymap refusal
+    // (#2622) still reaches the user as "that key is not in your keymap"
+    // rather than the generic registration error.
+    let failureError = null;
     const modeBackend = this._desktopBackend("dictation");
     const rows = this.getSlotHotkeys("dictation");
     try {
@@ -768,7 +817,11 @@ class HotkeyManager extends EventEmitter {
         );
         success = result.success;
         if (!success) {
+          failureError = result.error ?? null;
           this.activationMode = previousMode;
+          // Puts every row back in the mode it was working in — the general
+          // form of upstream's GNOME-only push restore, which only ever
+          // restored the primary hotkey.
           const restored = await this._registerDesktopBindings(
             modeBackend,
             "dictation",
@@ -791,7 +844,7 @@ class HotkeyManager extends EventEmitter {
     if (!success) {
       if (hotkey) {
         this.notifyHotkeyFailure(hotkey, {
-          error: i18nMain.t("hotkey.errors.registrationFailed", { hotkey }),
+          error: failureError || i18nMain.t("hotkey.errors.registrationFailed", { hotkey }),
         });
       }
       return false;
@@ -1262,14 +1315,14 @@ class HotkeyManager extends EventEmitter {
           try {
             const hotkey = await this.getSavedDictationHotkey();
             this.nativeRegistrationPending = false;
-            const success = await this.registerGnomeDictationHotkey(hotkey, callback);
-            if (success) {
+            const result = await this.registerGnomeDictationHotkey(hotkey, callback);
+            if (result === true) {
               this.currentHotkey = hotkey;
               this.notifyActiveHotkey(hotkey);
               debugLogger.log(`[HotkeyManager] GNOME hotkey "${hotkey}" registered successfully`);
             } else {
               const ok = await this.tryNativeFallbacks(hotkey, "GNOME", (fb) =>
-                this.registerGnomeDictationHotkey(fb, callback)
+                this.registerGnomeDictationHotkey(fb, callback).then((r) => r === true)
               );
               if (!ok) {
                 this.useGnome = false;

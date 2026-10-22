@@ -8,7 +8,10 @@ const { loadAudioManager } = require("./harness/audioManager");
 
 const CLEANUP_MODEL = "gemini-3-flash-preview";
 
-const settingsStoreMock = (settingsKey, { cleanupModel = CLEANUP_MODEL } = {}) => `
+const settingsStoreMock = (
+  settingsKey,
+  { cleanupModel = CLEANUP_MODEL, cloudCleanup = false } = {}
+) => `
   export const getSettings = () => globalThis.${settingsKey};
   export const getEffectiveCleanupModel = () => ${JSON.stringify(cleanupModel)};
   export const selectResolvedLLMConfig = () => ({
@@ -16,7 +19,7 @@ const settingsStoreMock = (settingsKey, { cleanupModel = CLEANUP_MODEL } = {}) =
     provider: "gemini",
     model: ${JSON.stringify(cleanupModel)}
   });
-  export const isCloudCleanupMode = () => false;
+  export const isCloudCleanupMode = () => ${cloudCleanup};
   export const isCloudDictationAgentMode = () => false;
   export const isCloudTranslationMode = () => false;
   export const useSettingsStore = {
@@ -52,13 +55,13 @@ const UNREACHABLE_TRANSLATION = `
 
 async function loadManagerFactory(
   t,
-  { cachePrefix, settingsKey, cleanupModel, agent = UNREACHABLE_AGENT } = {}
+  { cachePrefix, settingsKey, cleanupModel, cloudCleanup, agent = UNREACHABLE_AGENT } = {}
 ) {
   const { createManager } = await loadAudioManager(t, {
     cachePrefix,
     settingsKey,
     mockModules: {
-      "/stores/settingsStore": settingsStoreMock(settingsKey, { cleanupModel }),
+      "/stores/settingsStore": settingsStoreMock(settingsKey, { cleanupModel, cloudCleanup }),
       "/dictationAgentInference": agent,
       "/dictationTranslationInference": UNREACHABLE_TRANSLATION,
     },
@@ -213,7 +216,9 @@ test("an explicit mode ignores the wake word in the transcript", async (t) => {
 });
 
 // The cleaned hotkey cannot manufacture configuration: the transcript survives
-// and the user is told cleanup did not run.
+// and the user is told cleanup did not run — through upstream's
+// unconfigured-cleanup notice (#2634), which this recording's pinned mode
+// stands in for while the global preference is off.
 test("cleaned with no cleanup model pastes the transcript and reports the gap", async (t) => {
   const settingsKey = "__cleanupOverrideUnconfiguredSettings";
   const createManager = await loadManagerFactory(t, {
@@ -231,14 +236,20 @@ test("cleaned with no cleanup model pastes the transcript and reports the gap", 
   assert.deepEqual(calls, []);
   assert.deepEqual(manager._takePendingResultExtras(), {
     cleanupFailure: {
-      message: "AI cleanup is not configured",
-      messageKey: "app.toasts.cleanupUnavailable.title",
+      message: "AI cleanup is on, but no cleanup model is set up.",
+      messageKey: "hooks.audioRecording.cleanupUnconfigured",
+      surface: "llm",
+      settingsTarget: "llms",
+      setupKey: ["unconfigured", "providers", "gemini"].join("\0"),
     },
   });
   // Banked once per recording, and consumed by the result that carries it.
   assert.deepEqual(manager._takePendingResultExtras(), {});
 });
 
+// Upstream's notice alone would fire here — the preference is on and no model
+// can run — but this recording asked for no cleanup, so there is nothing to
+// warn about.
 test("raw with no cleanup model reports nothing — it asked for none", async (t) => {
   const settingsKey = "__cleanupOverrideRawUnconfiguredSettings";
   const createManager = await loadManagerFactory(t, {
@@ -323,6 +334,7 @@ test("the combined cloud STT log follows the recording's mode", async (t) => {
   const createManager = await loadManagerFactory(t, {
     cachePrefix: "openwhispr-cleanup-override-send-logs-",
     settingsKey,
+    cloudCleanup: true,
   });
   Object.defineProperty(navigator, "onLine", { configurable: true, value: true });
   t.after(() => delete navigator.onLine);
