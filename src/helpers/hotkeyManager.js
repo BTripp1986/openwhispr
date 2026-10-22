@@ -288,7 +288,10 @@ class HotkeyManager extends EventEmitter {
       const gsettingsReleased = await this.gnomeManager.unregisterKeybinding(bindingId);
       return portalReleased !== false && gsettingsReleased !== false;
     }
-    if (backend === "kde") return this.kdeManager.unregisterKeybinding(bindingId);
+    // KDE's manager always answers with a boolean, so anything else is not a
+    // confirmation. GNOME's pair above stays on `!== false` because one half
+    // is an optional method that is simply absent on older managers.
+    if (backend === "kde") return (await this.kdeManager.unregisterKeybinding(bindingId)) === true;
     return this.hyprlandManager.unregisterKeybinding(bindingId);
   }
 

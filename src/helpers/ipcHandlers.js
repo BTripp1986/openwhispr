@@ -4773,6 +4773,24 @@ class IPCHandlers {
           }
         }
 
+        // On KDE, release every registered KGlobalAccel action. KDE grabs the
+        // key at the compositor, so leaving the shortcut registered does not
+        // merely risk a stray dispatch — the field never sees the chord at
+        // all, because KGlobalAccel swallows it. Suppressing our callback is
+        // not a release.
+        if (hotkeyManager.isUsingKDE() && hotkeyManager.kdeManager) {
+          for (const bindingId of [...hotkeyManager.kdeManager.registeredSlots]) {
+            debugLogger.log(`[IPC] Unregistering KDE keybinding "${bindingId}" for capture mode`);
+            const released = await hotkeyManager.kdeManager
+              .unregisterKeybinding(bindingId)
+              .catch((err) => {
+                debugLogger.warn(`[IPC] Failed to unregister KDE "${bindingId}":`, err.message);
+                return false;
+              });
+            if (released !== true) captureHeld.push(bindingId);
+          }
+        }
+
         // On Hyprland Wayland, unregister the keybinding during capture
         if (hotkeyManager.isUsingHyprland() && hotkeyManager.hyprlandManager) {
           debugLogger.log("[IPC] Unregistering Hyprland keybinding for hotkey capture mode");

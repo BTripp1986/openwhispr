@@ -122,15 +122,42 @@ function gnomeDesktop({ refuse = () => false } = {}) {
   };
 }
 
-function fixture({ refuse, refuseRelease = false, holdRelease = false } = {}) {
+// KDE is the one backend whose manager used to answer nothing at all. Its
+// stand-in therefore answers exactly as the real one now does: true only when
+// KGlobalAccel confirmed, false when it refused, with the bookkeeping kept.
+function kdeDesktop({ refuse = () => false } = {}) {
+  const active = new Map();
+  const registeredSlots = new Set();
+  return {
+    active,
+    manager: {
+      registeredSlots,
+      async unregisterKeybinding(bindingId) {
+        active.delete(bindingId);
+        registeredSlots.delete(bindingId);
+        return true;
+      },
+      async registerKeybinding(hotkey, bindingId) {
+        if (refuse(bindingId)) return false;
+        active.set(bindingId, hotkey);
+        registeredSlots.add(bindingId);
+        return true;
+      },
+    },
+  };
+}
+
+function fixture({ refuse, refuseRelease = false, holdRelease = false, backend = "gnome" } = {}) {
   handlers.clear();
   delete require.cache[handlersModulePath];
   const IPCHandlers = require(handlersModulePath);
 
-  const desktop = gnomeDesktop({ refuse });
+  const desktop = backend === "kde" ? kdeDesktop({ refuse }) : gnomeDesktop({ refuse });
   if (refuseRelease) {
     desktop.manager.unregisterKeybinding = async () => false;
-    desktop.manager.unregisterPushToTalk = async () => false;
+    if (desktop.manager.unregisterPushToTalk) {
+      desktop.manager.unregisterPushToTalk = async () => false;
+    }
   }
   // Holds the teardown open — whatever it does — so a second focus can arrive
   // while the first one is still running.
@@ -146,9 +173,14 @@ function fixture({ refuse, refuseRelease = false, holdRelease = false } = {}) {
     };
   }
   const hotkeyManager = new HotkeyManager();
-  hotkeyManager.useGnome = true;
   hotkeyManager.activationMode = "tap";
-  hotkeyManager.gnomeManager = desktop.manager;
+  if (backend === "kde") {
+    hotkeyManager.useKDE = true;
+    hotkeyManager.kdeManager = desktop.manager;
+  } else {
+    hotkeyManager.useGnome = true;
+    hotkeyManager.gnomeManager = desktop.manager;
+  }
 
   const dictationCallback = () => {};
   hotkeyManager.slots.set("dictation", {
@@ -158,10 +190,15 @@ function fixture({ refuse, refuseRelease = false, holdRelease = false } = {}) {
     generation: 1,
     callback: dictationCallback,
   });
-  for (const [bindingId, shortcut] of [
-    ["dictation", "<Control>F8"],
-    ["dictation#1", "<Control>F9"],
-  ]) {
+  for (const [bindingId, shortcut] of backend === "kde"
+    ? [
+        ["dictation", "Control+F8"],
+        ["dictation#1", "Control+F9"],
+      ]
+    : [
+        ["dictation", "<Control>F8"],
+        ["dictation#1", "<Control>F9"],
+      ]) {
     desktop.active.set(bindingId, shortcut);
     desktop.manager.registeredSlots.add(bindingId);
   }
@@ -449,5 +486,65 @@ test("a blur during an enter is not collapsed into it", async () => {
       ["dictation", "<Control>F8"],
       ["dictation#1", "<Control>F9"],
     ]
+  );
+});
+
+// KDE was the one backend with no capture teardown at all. KGlobalAccel grabs
+// the key at the compositor, so an unreleased shortcut does not merely risk a
+// stray dispatch — the field never sees the chord, because KGlobalAccel
+// swallows it. Suppressing our own callback is not a release.
+test("KDE releases every registered action for capture, and restores them after", async () => {
+  const f = fixture({ backend: "kde" });
+
+  assert.deepEqual(await f.enter(), { success: true });
+  assert.deepEqual([...f.desktop.active.keys()], [], "both KGlobalAccel actions are released");
+
+  const left = await f.leave();
+
+  assert.deepEqual(left, { success: true });
+  assert.deepEqual(
+    [...f.desktop.active.entries()],
+    [
+      ["dictation", "Control+F8"],
+      ["dictation#1", "Control+F9"],
+    ],
+    "and both rows are registered again, each under its own binding id"
+  );
+  assert.deepEqual(f.hotkeyManager.getSlotHotkeys("dictation"), ["Control+F8", "Control+F9"]);
+});
+
+test("a KDE capture whose release KGlobalAccel refuses is not entered", async () => {
+  const f = fixture({ backend: "kde", refuseRelease: true });
+
+  const enter = await f.enter();
+
+  assert.equal(enter.success, false);
+  assert.equal(enter.reason, "capture_release_failed");
+  assert.equal(enter.degraded, true);
+  assert.deepEqual(f.broadcasts, ["release"]);
+  assert.equal(f.hotkeyManager.isInListeningMode(), false);
+  assert.deepEqual(
+    [...f.desktop.active.keys()],
+    ["dictation", "dictation#1"],
+    "the actions KGlobalAccel kept are still described as held"
+  );
+});
+
+// A teardown is rarely all-or-nothing. Whatever DID come free has to go back,
+// because the field is not going to open and nothing else would restore it.
+test("a partly refused KDE release puts back the row it did release", async () => {
+  const f = fixture({ backend: "kde" });
+  const realUnregister = f.desktop.manager.unregisterKeybinding.bind(f.desktop.manager);
+  f.desktop.manager.unregisterKeybinding = async (bindingId) =>
+    bindingId === "dictation#1" ? false : realUnregister(bindingId);
+
+  const enter = await f.enter();
+
+  assert.equal(enter.success, false);
+  assert.equal(enter.reason, "capture_release_failed");
+  assert.deepEqual(
+    [...f.desktop.active.keys()].sort(),
+    ["dictation", "dictation#1"],
+    "the released row was restored; the refused one was never gone"
   );
 });
