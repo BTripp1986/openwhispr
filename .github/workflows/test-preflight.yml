@@ -1,0 +1,174 @@
+# Tests-only preflight for the dictation-cleanup-hotkeys candidate.
+#
+# Why a hosted runner. On the shared development host two full-suite attempts
+# ended in a host-memory kill, neither leaving a summary block. Measured on the
+# exact candidate, one file at a time, nothing else running:
+# audioManagerStreamingFinalization.test.js (52 cases) dies with a V8 heap OOM
+# after 11 cases at a 768 MB old-space cap and after 33 at 1792 MB, and
+# completes only uncapped, at ~3.4 GB peak. The harness creates one Vite dev
+# server per TEST, so the working set grows with the case count; a heap cap
+# converts the kill into an OOM rather than preventing it.
+#
+# The long-running cases in the killed run (8-17 minutes against 3-10 s for
+# their neighbours) are NOT yet proven to be host-caused. This workflow exists
+# to judge them on a runner with the memory to run the suite unmodified.
+#
+# It never builds, signs, packages or releases anything.
+name: Test preflight (fork-only, tests only)
+
+on:
+  push:
+    branches:
+      - test-preflight/dictation-cleanup-hotkeys
+
+concurrency:
+  # One runner at a time, and never discard a completed run's result.
+  group: test-preflight-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: Full test suite at the pinned feature SHA
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Refuse to run anywhere but Ben's fork
+        if: github.repository != 'BTripp1986/openwhispr'
+        run: |
+          echo "This workflow runs only on BTripp1986/openwhispr." >&2
+          echo "Saw: ${{ github.repository }}" >&2
+          exit 1
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out the app under test at the pinned feature SHA
+        id: pin
+        run: |
+          set -euo pipefail
+          expected='4c4db5e3025d5c5a93e76a2942062e0f2c2babdf'
+          pinned="$(tr -d ' \t\r\n' < test-preflight/FEATURE_SHA)"
+          if [ "$pinned" != "$expected" ]; then
+            echo "test-preflight/FEATURE_SHA ($pinned) does not match the literal pinned in this workflow ($expected)." >&2
+            echo "Both must be updated together, so a candidate change is always visible in the diff." >&2
+            exit 1
+          fi
+          git cat-file -e "$pinned^{commit}" 2>/dev/null \
+            || git fetch --no-tags origin "$pinned" \
+            || { echo "pinned SHA $pinned is not reachable in this repository" >&2; exit 1; }
+          git checkout --detach "$pinned"
+          head="$(git rev-parse HEAD)"
+          if [ "$head" != "$expected" ]; then
+            echo "working tree is at $head, not the pinned $expected" >&2
+            exit 1
+          fi
+          echo "feature_sha=$head" >> "$GITHUB_OUTPUT"
+          echo "App under test: $head"
+
+      - name: Refuse to run with a real .env present
+        run: |
+          set -euo pipefail
+          if [ -f .env ]; then
+            echo "A .env is present in the checkout; refusing to run." >&2
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Confirm the lockfile was not modified
+        run: git diff --exit-code -- package-lock.json
+
+      - name: Build better-sqlite3 for the runner's node and open it
+        run: |
+          set -euo pipefail
+          npm rebuild better-sqlite3
+          node <<'NODE'
+          // A bare require would pass against a stale or absent binding; only
+          // opening a database proves the native ABI matches this node.
+          const Database = require("better-sqlite3");
+          const db = new Database(":memory:");
+          const { v } = db.prepare("select sqlite_version() as v").get();
+          console.log(`better-sqlite3 opened, SQLite ${v} on node ${process.version}`);
+          db.close();
+          NODE
+
+      - name: Run the full test suite
+        id: suite
+        env:
+          ELECTRON_OVERRIDE_DIST_PATH: /tmp
+          REQUIRE_DB_TESTS: "1"
+        run: |
+          set -u
+          # The log pins itself: an artifact downloaded on its own still says
+          # which commit, which workflow revision and which node produced it.
+          {
+            echo "# app under test:   ${{ steps.pin.outputs.feature_sha }}"
+            echo "# workflow commit:  ${{ github.sha }}"
+            echo "# runner node:      $(node --version)"
+            echo "# started:          $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } > fulltest.log
+          # GitHub runs every `run:` block as `bash -eo pipefail`, so WITHOUT
+          # this the first failing test would abort the step here and the
+          # footer, the totals and the tail below would never be written.
+          # `set -uo pipefail` does NOT clear errexit; only `set +e` does.
+          set +e
+          node --import tsx --test --test-concurrency=1 \
+            --test-reporter=spec \
+            "test/**/*.test.js" >> fulltest.log 2>&1
+          exit_code=$?
+          set -e
+          echo "SUITE_EXIT=$exit_code" >> fulltest.log
+          echo "suite_exit=$exit_code" >> "$GITHUB_OUTPUT"
+          tail -400 fulltest.log
+          exit "$exit_code"
+
+      - name: Record the real totals
+        if: always()
+        run: |
+          # Reporting only, and it must never replace the suite's own verdict
+          # with a failure of its own.
+          set +e
+          set -u
+          sha='${{ steps.pin.outputs.feature_sha }}'
+          {
+            echo "## Test preflight"
+            echo
+            echo "App under test: \`${sha:-unresolved}\`"
+            echo "Suite exit: \`${{ steps.suite.outputs.suite_exit || 'did not run' }}\`"
+            echo
+            if [ -f fulltest.log ]; then
+              echo '```'
+              # The runner's own summary block, verbatim. A run that was killed
+              # has no summary, and its absence is the signal that it did not
+              # complete - so say that rather than printing nothing.
+              # Matched without anchoring on the reporter's leading glyph,
+              # which is multibyte and locale-sensitive on a runner.
+              if grep -qE '(^|[^a-z])(tests|pass|fail) [0-9]+$' fulltest.log; then
+                grep -E '(^|[^a-z])(tests|suites|pass|fail|cancelled|skipped|todo|duration_ms) [0-9.]+$' fulltest.log
+              else
+                echo "NO SUMMARY BLOCK: the suite did not run to completion."
+              fi
+              echo '```'
+            else
+              echo "No log was produced."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the full log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-preflight-${{ steps.pin.outputs.feature_sha || github.sha }}
+          path: fulltest.log
+          if-no-files-found: warn
+          retention-days: 14
