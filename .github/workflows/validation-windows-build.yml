@@ -85,14 +85,6 @@ jobs:
             || git fetch --no-tags origin "$sha" \
             || { echo "pinned SHA $sha is not reachable in this repository" >&2; exit 1; }
 
-      - name: Gate — every workflow shell block parses
-        shell: bash
-        run: |
-          set -euo pipefail
-          # A quoting mistake in a run: block is otherwise only found by CI
-          # itself, after a push that also triggers a Windows build.
-          node scripts/validation/check-workflow-shell.js .github/workflows/validation-windows-build.yml
-
       - name: Gate — the branch adds packaging only
         run: node scripts/validation/check-packaging-only-diff.js '${{ steps.pin.outputs.feature_sha }}'
 
@@ -132,14 +124,30 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
+      # AFTER the install, not before: this one is the only gate that needs a
+      # dependency (js-yaml). It sat ahead of npm ci and had never actually run
+      # in CI, so its first real execution failed with "Cannot find module
+      # 'js-yaml'" and took the rest of the job down with it. The two gates
+      # that use node builtins alone stay ahead of the install, so a branch
+      # that fails them still fails fast.
+      - name: Gate — every workflow shell block parses
+        shell: bash
+        run: |
+          set -euo pipefail
+          # A quoting mistake in a run: block is otherwise only found by CI
+          # itself, after a push that also triggers a Windows build.
+          node scripts/validation/check-workflow-shell.js .github/workflows/validation-windows-build.yml
+
       - name: Lint, typecheck, translations
         run: |
           npm run lint
           npm run typecheck
           npm run i18n:check
 
+      # No `if:` on purpose. With `!cancelled()` this ran after a failed
+      # install and reported a module-not-found error that hid the real
+      # failure; it must run only once every prerequisite has succeeded.
       - name: Build better-sqlite3 for the runner's node and open it
-        if: ${{ !cancelled() }}
         run: |
           set -euo pipefail
           npm rebuild better-sqlite3
@@ -153,9 +161,11 @@ jobs:
           db.close();
           NODE
 
+      # Same: the suite needs the install and the gates to have passed. The
+      # totals and artifact steps below stay `always()`, so a failure is still
+      # collected and reported.
       - name: Run the test suite
         id: suite
-        if: ${{ !cancelled() }}
         env:
           ELECTRON_OVERRIDE_DIST_PATH: /tmp
           REQUIRE_DB_TESTS: "1"
