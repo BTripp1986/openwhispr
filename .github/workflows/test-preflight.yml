@@ -51,7 +51,7 @@ jobs:
         id: pin
         run: |
           set -euo pipefail
-          expected='4faeb6770b408eecca180b185bd7e8cf26e7616b'
+          expected='23cff499d1b6c349dc5d7b60ebc25e70a6c467fb'
           pinned="$(tr -d ' \t\r\n' < test-preflight/FEATURE_SHA)"
           if [ "$pinned" != "$expected" ]; then
             echo "test-preflight/FEATURE_SHA ($pinned) does not match the literal pinned in this workflow ($expected)." >&2
