@@ -101,10 +101,16 @@ test("exports every Hyprland D-Bus toggle", async () => {
     // dictation row carries its own cleanup mode now, so there is one
     // dictation toggle again. A method left on the interface would be a
     // shortcut nothing in the app can reach.
+    // ToggleBinding/PttDownBinding/PttUpBinding carry a slot and a row index,
+    // which is how a second dictation shortcut reaches its own callback
+    // (hyprlandMultiRow.test.js).
     assert.deepEqual(Object.keys(exported.iface.methods).sort(), [
       "PttDown",
+      "PttDownBinding",
       "PttUp",
+      "PttUpBinding",
       "Toggle",
+      "ToggleBinding",
       "ToggleMeeting",
       "ToggleTranslation",
       "ToggleVoiceAgent",

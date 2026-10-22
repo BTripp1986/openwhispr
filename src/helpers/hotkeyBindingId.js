@@ -15,4 +15,15 @@ function slotOfBindingId(bindingId) {
   return marker === -1 ? bindingId : bindingId.slice(0, marker);
 }
 
-module.exports = { bindingIdFor, slotOfBindingId };
+// The row a binding id names. Hyprland sends slot and index as two D-Bus
+// arguments rather than the id itself, because a literal "#" in a hyprlang
+// line starts a comment.
+function indexOfBindingId(bindingId) {
+  if (typeof bindingId !== "string") return 0;
+  const marker = bindingId.indexOf("#");
+  if (marker === -1) return 0;
+  const index = Number(bindingId.slice(marker + 1));
+  return Number.isInteger(index) && index > 0 ? index : 0;
+}
+
+module.exports = { bindingIdFor, slotOfBindingId, indexOfBindingId };
