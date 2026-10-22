@@ -149,10 +149,18 @@ thing to the team i guess":
      and keep held, speak, release to stop. If a row cannot support Hold, the
      control must say so rather than offering Hold and silently behaving as
      Tap. Then switch back to Tap and confirm both rows toggle again.
- 12. Press one row, then the other about a quarter-second later. The second
-     press must NOT be silently swallowed - it should stop the recording that
-     the first one started. You must never end up with two recordings running
-     at once.
+ 12. TAP MODE overlap. With Tap selected, press one row, then the other about
+     a quarter-second later. The second press must NOT be silently swallowed -
+     it should stop the recording the first one started. That recording keeps
+     the cleanup mode of the row that STARTED it, not of the row that stopped
+     it: check the log line from step 2's row, not the second one. You must
+     never end up with two recordings running at once.
+ 12b. HOLD MODE overlap - a different rule on purpose. Switch to Hold. Press
+     and keep holding one row, then press and release the other while the
+     first is still held. The second row must NOT take over, must not change
+     the running recording's cleanup mode, and must not stop it: the row that
+     started the hold owns it, and only releasing THAT row's own keys ends it.
+     Confirm the finished text used the holding row's mode.
  13. Change a row's Text cleanup selector while that row's shortcut is NOT in
      use. It should take effect immediately with no re-assignment, and the
      shortcut must still fire afterwards.

@@ -1,9 +1,13 @@
 # FORK-ONLY, TEST-ONLY. Lives on validation/* branches and must never be merged
 # to main or included in an upstream PR. See VALIDATION_BUILD.md.
 #
-# Produces an unsigned, unpacked Windows test build of the dictation raw/cleaned
-# hotkeys candidate so a tester needs no Node, npm, git or build tools. It never
-# signs, never publishes and never creates a release.
+# Produces an unsigned, unpacked Windows test build of the per-shortcut text
+# cleanup candidate - one Dictation Hotkey section whose every row carries its
+# own cleanup mode - so a tester needs no Node, npm, git or build tools. It
+# never signs, never publishes and never creates a release.
+#
+# The separate Raw Dictation and Cleaned Dictation groups this header used to
+# describe are gone; they were the superseded beta design.
 #
 # Push-triggered on purpose: workflow_dispatch needs the workflow registered on
 # the repository's default branch, and this one must not touch the fork's main.
@@ -31,15 +35,21 @@ jobs:
   guard:
     name: Guard (fork-only, packaging-only diff)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # The suite runs one file at a time here (see "Run the test suite"), which
+    # is slower than the default parallelism but is the only execution the
+    # host could be shown to complete. 20 minutes could not finish it.
+    timeout-minutes: 90
     outputs:
       feature_sha: ${{ steps.pin.outputs.feature_sha }}
       label: ${{ steps.pin.outputs.label }}
     steps:
-      - name: Refuse to run on the upstream repository
-        if: github.repository == 'OpenWhispr/openwhispr'
+      - name: Refuse to run anywhere but Ben's fork
+        # Named exactly, not "anything but upstream": a copy of this branch in
+        # some third repository is not authorized to package either.
+        if: github.repository != 'BTripp1986/openwhispr'
         run: |
-          echo "This workflow is fork-only and must never run on upstream." >&2
+          echo "This workflow runs only on BTripp1986/openwhispr." >&2
+          echo "Saw: ${{ github.repository }}" >&2
           exit 1
 
       - uses: actions/checkout@v4
@@ -86,6 +96,13 @@ jobs:
       - name: Gate — the branch adds packaging only
         run: node scripts/validation/check-packaging-only-diff.js '${{ steps.pin.outputs.feature_sha }}'
 
+      # PACKAGING_PATHS says WHICH files may differ; two of them are main.js
+      # and src/helpers/ipcHandlers.js, so on its own it would let an
+      # arbitrary application change ride into a build. This pins WHAT may
+      # differ inside them to the reviewed hunks.
+      - name: Gate — the application-file diff is the reviewed isolation patch
+        run: node scripts/validation/check-isolation-diff.js '${{ steps.pin.outputs.feature_sha }}'
+
       - name: Record the packaging diff for review
         run: |
           set -euo pipefail
@@ -121,16 +138,83 @@ jobs:
           npm run typecheck
           npm run i18n:check
 
-      - name: Build better-sqlite3 for the runner's node
+      - name: Build better-sqlite3 for the runner's node and open it
         if: ${{ !cancelled() }}
-        run: npm rebuild better-sqlite3
+        run: |
+          set -euo pipefail
+          npm rebuild better-sqlite3
+          node <<'NODE'
+          // A bare require passes against a stale or absent binding; only
+          // opening a database proves the native ABI matches this node.
+          const Database = require("better-sqlite3");
+          const db = new Database(":memory:");
+          const { v } = db.prepare("select sqlite_version() as v").get();
+          console.log(`better-sqlite3 opened, SQLite ${v} on node ${process.version}`);
+          db.close();
+          NODE
 
       - name: Run the test suite
+        id: suite
         if: ${{ !cancelled() }}
-        run: npm test
         env:
           ELECTRON_OVERRIDE_DIST_PATH: /tmp
           REQUIRE_DB_TESTS: "1"
+        run: |
+          set -u
+          mkdir -p validation-out
+          # The log pins itself, so the artifact still says what produced it.
+          {
+            echo "# app under test:   ${{ steps.pin.outputs.feature_sha }}"
+            echo "# validation SHA:   ${{ github.sha }}"
+            echo "# runner node:      $(node --version)"
+            echo "# started:          $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } > validation-out/fulltest.log
+          # `npm test` ran at the runner's default parallelism, which on this
+          # project means several multi-GB Vite-SSR workers at once. One file
+          # at a time, with no heap cap and no skips: the suite is unchanged,
+          # only its scheduling is.
+          #
+          # GitHub runs this block as `bash -eo pipefail`, so without `set +e`
+          # the first failing test would abort the step here and the footer,
+          # the totals and the artifact below would never be written.
+          # `set -uo pipefail` does NOT clear errexit; only `set +e` does.
+          set +e
+          node --import tsx --test --test-concurrency=1 \
+            --test-reporter=spec \
+            "test/**/*.test.js" >> validation-out/fulltest.log 2>&1
+          exit_code=$?
+          set -e
+          echo "SUITE_EXIT=$exit_code" >> validation-out/fulltest.log
+          echo "suite_exit=$exit_code" >> "$GITHUB_OUTPUT"
+          tail -400 validation-out/fulltest.log
+          exit "$exit_code"
+
+      - name: Record the real suite totals
+        if: always()
+        run: |
+          # Reporting only: it must never replace the suite's own verdict.
+          set +e
+          set -u
+          {
+            echo "## Guard test suite"
+            echo
+            echo "Suite exit: \`${{ steps.suite.outputs.suite_exit || 'did not run' }}\`"
+            echo
+            echo '```'
+            if [ -f validation-out/fulltest.log ]; then
+              # A killed run has no summary block, and that absence is the
+              # signal - say it rather than printing nothing.
+              if grep -qE '(^|[^a-z])(tests|pass|fail) [0-9]+$' validation-out/fulltest.log; then
+                grep -E '(^|[^a-z])(tests|suites|pass|fail|cancelled|skipped|todo|duration_ms) [0-9.]+$' \
+                  validation-out/fulltest.log
+              else
+                echo "NO SUMMARY BLOCK: the suite did not run to completion."
+              fi
+            else
+              echo "No log was produced."
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v7
         if: always()
@@ -300,6 +384,18 @@ jobs:
       - name: Verify artifact invariants (static inspection only)
         shell: bash
         run: node scripts/validation/verify-windows-test-artifact.js dist/win-unpacked | tee validation-verify.log
+
+      # Byte-level proof that the artifact carries the reviewed tree: every
+      # shipped source file the revision changed, every file the isolation
+      # patch touches, every locale, and the three standalone files beside the
+      # EXE. A CRLF-only difference is accepted and LABELLED, with both raw
+      # hashes printed; anything else fails.
+      - name: Verify the artifact's sources match this commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          node scripts/validation/compare-artifact-sources.js dist/win-unpacked '${{ github.sha }}' \
+            | tee validation-source-compare.log
 
       - name: Package the complete directory and hash it
         shell: pwsh
