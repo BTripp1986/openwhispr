@@ -96,16 +96,16 @@ test("exports every Hyprland D-Bus toggle", async () => {
     manager.callbacks.meeting = () => calls.push("meeting");
     manager.callbacks.voiceAgent = () => calls.push("voiceAgent");
     manager.callbacks.translation = () => calls.push("translation");
-    manager.callbacks.rawDictation = () => calls.push("rawDictation");
-    manager.callbacks.cleanedDictation = () => calls.push("cleanedDictation");
 
+    // The beta's ToggleRawDictation and ToggleCleanedDictation are gone: a
+    // dictation row carries its own cleanup mode now, so there is one
+    // dictation toggle again. A method left on the interface would be a
+    // shortcut nothing in the app can reach.
     assert.deepEqual(Object.keys(exported.iface.methods).sort(), [
       "PttDown",
       "PttUp",
       "Toggle",
-      "ToggleCleanedDictation",
       "ToggleMeeting",
-      "ToggleRawDictation",
       "ToggleTranslation",
       "ToggleVoiceAgent",
     ]);
@@ -113,16 +113,7 @@ test("exports every Hyprland D-Bus toggle", async () => {
     exported.methods.ToggleMeeting();
     exported.methods.ToggleVoiceAgent();
     exported.methods.ToggleTranslation();
-    exported.methods.ToggleRawDictation();
-    exported.methods.ToggleCleanedDictation();
-    assert.deepEqual(calls, [
-      "dictation",
-      "meeting",
-      "voiceAgent",
-      "translation",
-      "rawDictation",
-      "cleanedDictation",
-    ]);
+    assert.deepEqual(calls, ["dictation", "meeting", "voiceAgent", "translation"]);
   });
 });
 
