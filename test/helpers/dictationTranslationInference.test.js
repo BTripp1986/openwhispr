@@ -171,9 +171,8 @@ test("enterprise mode without a provider fails closed", async () => {
 
 test("managed enterprise access supplies the provider and model, ignoring manual settings", async (t) => {
   const { resolveDictationTranslationInference } = await load();
-  const { useEnterpriseIdentityStore } = await import(
-    "../../src/stores/enterpriseIdentityStore.ts"
-  );
+  const { useEnterpriseIdentityStore } =
+    await import("../../src/stores/enterpriseIdentityStore.ts");
 
   const scopes = [
     "dictationCleanup",

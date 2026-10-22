@@ -1392,13 +1392,15 @@ declare global {
       showDictationPanel: () => Promise<void>;
       openSettingsSection?: (section: ProviderSettingsTarget) => Promise<{ success: boolean }>;
       captureDictationTarget?: () => Promise<{ success: boolean; pid: number | null }>;
-      onToggleDictation: (callback: () => void) => () => void;
+      onToggleDictation: (
+        callback: (payload?: { cleanupOverride?: "raw" | "cleaned" | null }) => void
+      ) => () => void;
       onToggleVoiceAgent?: (callback: () => void) => () => void;
       onToggleTranslation?: (callback: () => void) => () => void;
-      onToggleRawDictation?: (callback: () => void) => () => void;
-      onToggleCleanedDictation?: (callback: () => void) => () => void;
       onOpenAssistantPanel?: (callback: () => void) => () => void;
-      onStartDictation?: (callback: () => void) => () => void;
+      onStartDictation?: (
+        callback: (payload?: { cleanupOverride?: "raw" | "cleaned" | null }) => void
+      ) => () => void;
       onStopDictation?: (callback: () => void) => () => void;
       onPrepareDictation?: (
         callback: (options?: { inputKind?: "dictation" | "assistant" | "translation" }) => void
@@ -2252,8 +2254,21 @@ declare global {
       openExternal: (url: string) => Promise<{ success: boolean; error?: string }>;
 
       // Hotkey management
-      updateHotkey: (key: string) => Promise<{ success: boolean; message: string }>;
-      setHotkeyListeningMode?: (enabled: boolean) => Promise<{ success: boolean }>;
+      updateHotkey: (
+        key: string
+      ) => Promise<{ success: boolean; message?: string; degraded?: boolean }>;
+      /**
+       * Capture mode releases every shortcut and restores them on exit.
+       * `success: false` means a restore the desktop did not confirm, so the
+       * shortcuts may be unclaimed.
+       */
+      setHotkeyListeningMode?: (enabled: boolean) => Promise<{
+        success: boolean;
+        skipped?: boolean;
+        reason?: string;
+        error?: string;
+        degraded?: boolean;
+      }>;
       getHotkeyModeInfo?: (hotkey?: string) => Promise<{
         isUsingGnome: boolean;
         isUsingHyprland: boolean;
@@ -2261,8 +2276,14 @@ declare global {
         isUsingNativeShortcut: boolean;
         supportsPushToTalk: boolean;
         pushToTalkUnavailableReason: string | null;
+        /** The row that refuses Hold, when one does. */
+        blockingHotkey?: string | null;
         linuxInputAccessDenied?: boolean;
       }>;
+      /** Capture mode could not release or restore the OS shortcuts. */
+      onHotkeyCaptureFailed?: (
+        callback: (data: { phase: "release" | "restore" }) => void
+      ) => () => void;
       getHyprlandConfigStatus?: () => Promise<{ canWrite: boolean; path: string } | null>;
 
       // Wayland paste diagnostics
@@ -2852,14 +2873,18 @@ declare global {
       getVoiceAgentKey?: () => Promise<string>;
       updateTranslationHotkey?: (hotkey: string) => Promise<{ success: boolean; message?: string }>;
       getTranslationKey?: () => Promise<string>;
-      updateRawDictationHotkey?: (
-        hotkey: string
-      ) => Promise<{ success: boolean; message?: string }>;
-      getRawDictationKey?: () => Promise<string>;
-      updateCleanedDictationHotkey?: (
-        hotkey: string
-      ) => Promise<{ success: boolean; message?: string }>;
-      getCleanedDictationKey?: () => Promise<string>;
+      applyDictationHotkeys?: (request: {
+        rows: Array<{ key: string; mode: "raw" | "cleaned" | null }>;
+      }) => Promise<{
+        success: boolean;
+        rows?: Array<{ key: string; mode: "raw" | "cleaned" | null }>;
+        error?: string;
+        reason?: string;
+        degraded?: boolean;
+      }>;
+      getDictationHotkeyConfig?: () => Promise<{
+        rows: Array<{ key: string; mode: "raw" | "cleaned" | null }>;
+      }>;
       createAgentConversation?: (
         title: string,
         noteId?: number | null,
