@@ -528,13 +528,23 @@ async function main() {
     if (second) logs.push(`===== launch 2 (pid ${second.pid}) =====\n${second.log()}`);
     fs.writeFileSync(path.join(out, "electron-smoke-app.log"), logs.join("\n\n"));
     report.fatal = fatal;
-    report.failed = checks.filter((c) => !c.ok).length;
+    // Derived from `checks` at write time, AFTER every record above including
+    // the cleanup assertions, and carrying its own reconciliation so a later
+    // edit that records a check past this point cannot leave the JSON
+    // disagreeing with its own array.
     report.total = checks.length;
+    report.passed = checks.filter((c) => c.ok).length;
+    report.failed = checks.filter((c) => !c.ok).length;
+    report.reconciles = report.passed + report.failed === report.total;
     fs.writeFileSync(path.join(out, "electron-smoke-report.json"), JSON.stringify(report, null, 2));
   }
 
   const failed = checks.filter((c) => !c.ok);
-  console.log(`\nSMOKE_TOTAL=${checks.length} SMOKE_FAILED=${failed.length}`);
+  const passed = checks.length - failed.length;
+  console.log(
+    `\nSMOKE_TOTAL=${checks.length} SMOKE_PASSED=${passed} SMOKE_FAILED=${failed.length}` +
+      ` SMOKE_RECONCILES=${passed + failed.length === checks.length}`
+  );
   for (const check of failed) console.log(`STILL_FAILING: ${check.name} :: ${check.detail}`);
   process.exit(failed.length === 0 ? 0 : 1);
 }
