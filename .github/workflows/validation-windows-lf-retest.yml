@@ -129,48 +129,64 @@ jobs:
             '
           } | tee "$out"
 
-      - name: Re-materialize the SAME commit with LF bytes (no file is edited)
+      - name: Restore the two sliced files to the candidate's exact committed bytes
         run: |
           set -euo pipefail
-          # git configuration only: no app source and no test is modified. The
-          # index still describes the pinned commit, so re-extracting from it
-          # writes the candidate's own blob bytes verbatim.
           git config core.autocrlf false
           git config core.eol lf
-          git ls-files -z | xargs -0 rm -f
-          git checkout-index --all --force
-          echo "re-materialized at $(git rev-parse HEAD)"
+          # ONE variable changes: the bytes of the only two files whose TEXT
+          # the failing tests read and slice. They are written straight from
+          # the candidate's own blobs, so no checkout filter can touch them,
+          # and the result is byte-identical to the commit under test.
+          #
+          # Everything else is left exactly as actions/checkout produced it
+          # for the failing run, CRLF included. That is deliberate: a test
+          # file is parsed as JavaScript, where CRLF is harmless, so leaving
+          # them untouched keeps this a single-variable experiment and any
+          # failure that persists cannot be blamed on line endings here.
+          for f in main.js src/helpers/hotkeyManager.js; do
+            git cat-file blob "HEAD:$f" > "$f"
+            echo "restored from blob: $f"
+          done
 
-      - name: Prove the working tree now holds the candidate's exact bytes
+      - name: Prove those bytes are the candidate's, measured not inferred
         run: |
           set -euo pipefail
-          # Nothing may differ from the pinned commit.
-          git diff --exit-code
-          status="$(git status --porcelain)"
-          if [ -n "$status" ]; then
-            echo "working tree is not clean after re-materializing:" >&2
-            echo "$status" >&2
-            exit 1
-          fi
-          # And every file the re-test depends on must be byte-identical to its
-          # blob, which `git diff` alone would not prove under a CRLF filter.
           fail=0
-          while IFS= read -r f; do
-            [ -n "$f" ] || continue
+          for f in main.js src/helpers/hotkeyManager.js; do
             work="$(sha256sum "$f" | cut -d' ' -f1)"
             blob="$(git cat-file blob "HEAD:$f" | sha256sum | cut -d' ' -f1)"
+            crlf="$(grep -c $'\r$' "$f" || true)"
+            echo "$f working=$work blob=$blob crlf_lines=$crlf"
             if [ "$work" != "$blob" ]; then
-              echo "BYTES DIFFER from the candidate blob: $f ($work != $blob)" >&2
+              echo "BYTES DIFFER from the candidate blob: $f" >&2
               fail=1
             fi
-          done <<EOF
-          main.js
-          src/helpers/hotkeyManager.js
-          $(grep -vE '^\s*#|^\s*$' "$RUNNER_TEMP/lf/FAILED_FILES")
-          EOF
+          done
           [ "$fail" -eq 0 ] || exit 1
-          echo "every file under test is byte-identical to the candidate's blob"
-          git rev-parse HEAD
+          # The slice the tests perform, measured on the bytes now in place.
+          node -e '
+            const fs = require("node:fs");
+            const main = fs.readFileSync("main.js", "utf8");
+            for (const name of ["function restoreDictationRows() {", "async function checkStartupHold() {"]) {
+              const start = main.indexOf(name);
+              const end = main.indexOf("\n}\n", start);
+              const length = start === -1 ? 0 : main.slice(start, end + 3).length;
+              console.log(`slice for ${JSON.stringify(name)}: start=${start} end=${end} length=${length}`);
+              if (length === 0) {
+                console.error("the slice is still empty; the re-test would prove nothing");
+                process.exit(1);
+              }
+            }
+          '
+          # Diagnostics only, never a gate: under a CRLF checkout filter these
+          # two commands do NOT answer "are the bytes the candidate's". The
+          # previous attempt proved it - after re-extracting the whole tree
+          # they reported every text file as modified, which is why the
+          # sha256-vs-blob check above is the actual proof.
+          echo "git status --porcelain lines: $(git status --porcelain | wc -l)"
+          git status --porcelain | head -5 || true
+          echo "HEAD: $(git rev-parse HEAD)"
 
       - name: Refuse to run with a real .env present
         run: |
