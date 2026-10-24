@@ -1,0 +1,218 @@
+{
+  "candidate": "23cff499d1b6c349dc5d7b60ebc25e70a6c467fb",
+  "source_sha256": "d7d39c00b269af053a65c1474fb5e90d7b91229f52c03ba4519af739e6032caf",
+  "driver_exit": 1,
+  "passed": 11,
+  "failed": 2,
+  "note": "Selected results from the full reproduction. Missing binding verified; physical keypresses not tested.",
+  "results": [
+    {
+      "name": "phase 2 (cold start): rows as STORED, over real IPC",
+      "ok": null,
+      "detail": [
+        [
+          "F19",
+          "cleaned"
+        ],
+        [
+          "F20",
+          null
+        ]
+      ]
+    },
+    {
+      "name": "phase 2 (cold start): binds as REGISTERED in the live compositor, after waiting 30 s",
+      "ok": null,
+      "detail": [
+        {
+          "key": "F19",
+          "modmask": 0,
+          "dispatcher": "__lua",
+          "arg": "204",
+          "release": false
+        },
+        {
+          "key": "F21",
+          "modmask": 0,
+          "dispatcher": "__lua",
+          "arg": "220",
+          "release": false
+        }
+      ]
+    },
+    {
+      "name": "phase 2: first time each key appeared after launch (ms)",
+      "ok": null,
+      "detail": {
+        "F19": 3316,
+        "F20": null
+      }
+    },
+    {
+      "name": "phase 2: both STORED rows are also REGISTERED in the live compositor after a cold start",
+      "ok": false,
+      "detail": {
+        "firstSeen": {
+          "F19": 3316,
+          "F20": null
+        },
+        "registered": [
+          {
+            "key": "F19",
+            "modmask": 0,
+            "dispatcher": "__lua",
+            "arg": "204",
+            "release": false
+          },
+          {
+            "key": "F21",
+            "modmask": 0,
+            "dispatcher": "__lua",
+            "arg": "220",
+            "release": false
+          }
+        ],
+        "stored": [
+          [
+            "F19",
+            "cleaned"
+          ],
+          [
+            "F20",
+            null
+          ]
+        ]
+      }
+    },
+    {
+      "name": "phase 2: what the UI shows after the restart",
+      "ok": null,
+      "detail": {
+        "rows": 2,
+        "keys": [
+          "HotkeyF19click to change",
+          "HotkeyF20click to change"
+        ],
+        "expanded": [
+          "false",
+          "false"
+        ],
+        "chips": [
+          "Cleanup always on"
+        ],
+        "selectors": [
+          "Always on",
+          "Use app setting"
+        ]
+      }
+    },
+    {
+      "name": "phase 3: binds before vs after that commit",
+      "ok": null,
+      "detail": {
+        "before": [
+          {
+            "key": "F19",
+            "modmask": 0,
+            "dispatcher": "__lua",
+            "arg": "204",
+            "release": false
+          },
+          {
+            "key": "F21",
+            "modmask": 0,
+            "dispatcher": "__lua",
+            "arg": "220",
+            "release": false
+          }
+        ],
+        "after": [
+          {
+            "key": "F19",
+            "modmask": 0,
+            "dispatcher": "__lua",
+            "arg": "261",
+            "release": false
+          },
+          {
+            "key": "F20",
+            "modmask": 0,
+            "dispatcher": "__lua",
+            "arg": "271",
+            "release": false
+          },
+          {
+            "key": "F22",
+            "modmask": 0,
+            "dispatcher": "__lua",
+            "arg": "315",
+            "release": false
+          },
+          {
+            "key": "F21",
+            "modmask": 0,
+            "dispatcher": "__lua",
+            "arg": "319",
+            "release": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "phase 3: a Settings commit registers every row, including one the cold start had left unbound",
+      "ok": true,
+      "detail": [
+        {
+          "key": "F19",
+          "modmask": 0,
+          "dispatcher": "__lua",
+          "arg": "261",
+          "release": false
+        },
+        {
+          "key": "F20",
+          "modmask": 0,
+          "dispatcher": "__lua",
+          "arg": "271",
+          "release": false
+        },
+        {
+          "key": "F22",
+          "modmask": 0,
+          "dispatcher": "__lua",
+          "arg": "315",
+          "release": false
+        },
+        {
+          "key": "F21",
+          "modmask": 0,
+          "dispatcher": "__lua",
+          "arg": "319",
+          "release": false
+        }
+      ]
+    },
+    {
+      "name": "teardown: every test-owned bind is gone (full bind identity)",
+      "ok": true,
+      "detail": {
+        "added": [],
+        "removed": [],
+        "same": true
+      }
+    },
+    {
+      "name": "teardown: the user's ~/.config/hypr is byte-identical",
+      "ok": true
+    },
+    {
+      "name": "teardown: no process from this run survives",
+      "ok": true,
+      "detail": []
+    },
+    {
+      "name": "teardown: com.openwhispr.App released the session bus",
+      "ok": true
+    }
+  ]
+}

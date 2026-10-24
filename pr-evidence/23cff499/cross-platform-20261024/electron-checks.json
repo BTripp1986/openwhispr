@@ -1,0 +1,262 @@
+[
+  {
+    "source": "macos-arm64-report.json",
+    "sha256": "9b342cd862790618dee677939ca013f206d1c2318791be081f894b47ae36f893",
+    "candidate": "23cff499d1b6c349dc5d7b60ebc25e70a6c467fb",
+    "platform": "darwin",
+    "arch": "arm64",
+    "total": 18,
+    "passed": 18,
+    "failed": 0,
+    "checks": [
+      {
+        "name": "startup: the real main process booted and a renderer finished loading with the preload bridge",
+        "ok": true
+      },
+      {
+        "name": "isolation: appData and userData really resolve inside the harness directory",
+        "ok": true
+      },
+      {
+        "name": "isolation: the channel put userData on its own profile",
+        "ok": true
+      },
+      {
+        "name": "disclosure: writes the app makes under $HOME, by metadata only (never the CLI bridge token)",
+        "ok": true
+      },
+      {
+        "name": "platform record: hotkey mode info",
+        "ok": true
+      },
+      {
+        "name": "Electron ABI: better-sqlite3 returned a real query result (array) from inside Electron",
+        "ok": true
+      },
+      {
+        "name": "baseline: main reports its committed rows",
+        "ok": true
+      },
+      {
+        "name": "apply: four rows with per-row cleanup modes registered natively",
+        "ok": true
+      },
+      {
+        "name": "apply: every row kept its own key AND its own mode, in order",
+        "ok": true
+      },
+      {
+        "name": "portability: the stored profile keeps the original spelling, not this platform's canonical form",
+        "ok": true
+      },
+      {
+        "name": "refusal: an unregistrable key is refused and the working rows survive untouched",
+        "ok": true
+      },
+      {
+        "name": "the global cleanup preference was never written by any of this",
+        "ok": true
+      },
+      {
+        "name": "shutdown: the app really exited on SIGTERM without needing SIGKILL",
+        "ok": true
+      },
+      {
+        "name": "shutdown: the debugging port was released",
+        "ok": true
+      },
+      {
+        "name": "restart: every row came back with both its key and its cleanup mode",
+        "ok": true
+      },
+      {
+        "name": "restart: the second instance really exited without needing SIGKILL",
+        "ok": true
+      },
+      {
+        "name": "restart: the second debugging port was released",
+        "ok": true
+      },
+      {
+        "name": "cleanup: no child process, port or harness file left behind",
+        "ok": true
+      }
+    ]
+  },
+  {
+    "source": "macos-x64-report.json",
+    "sha256": "58135cf1361b61b77b4386822c95bf84feabf98d665a090f65a734c2b6da8955",
+    "candidate": "23cff499d1b6c349dc5d7b60ebc25e70a6c467fb",
+    "platform": "darwin",
+    "arch": "x64",
+    "total": 18,
+    "passed": 18,
+    "failed": 0,
+    "checks": [
+      {
+        "name": "startup: the real main process booted and a renderer finished loading with the preload bridge",
+        "ok": true
+      },
+      {
+        "name": "isolation: appData and userData really resolve inside the harness directory",
+        "ok": true
+      },
+      {
+        "name": "isolation: the channel put userData on its own profile",
+        "ok": true
+      },
+      {
+        "name": "disclosure: writes the app makes under $HOME, by metadata only (never the CLI bridge token)",
+        "ok": true
+      },
+      {
+        "name": "platform record: hotkey mode info",
+        "ok": true
+      },
+      {
+        "name": "Electron ABI: better-sqlite3 returned a real query result (array) from inside Electron",
+        "ok": true
+      },
+      {
+        "name": "baseline: main reports its committed rows",
+        "ok": true
+      },
+      {
+        "name": "apply: four rows with per-row cleanup modes registered natively",
+        "ok": true
+      },
+      {
+        "name": "apply: every row kept its own key AND its own mode, in order",
+        "ok": true
+      },
+      {
+        "name": "portability: the stored profile keeps the original spelling, not this platform's canonical form",
+        "ok": true
+      },
+      {
+        "name": "refusal: an unregistrable key is refused and the working rows survive untouched",
+        "ok": true
+      },
+      {
+        "name": "the global cleanup preference was never written by any of this",
+        "ok": true
+      },
+      {
+        "name": "shutdown: the app really exited on SIGTERM without needing SIGKILL",
+        "ok": true
+      },
+      {
+        "name": "shutdown: the debugging port was released",
+        "ok": true
+      },
+      {
+        "name": "restart: every row came back with both its key and its cleanup mode",
+        "ok": true
+      },
+      {
+        "name": "restart: the second instance really exited without needing SIGKILL",
+        "ok": true
+      },
+      {
+        "name": "restart: the second debugging port was released",
+        "ok": true
+      },
+      {
+        "name": "cleanup: no child process, port or harness file left behind",
+        "ok": true
+      }
+    ]
+  },
+  {
+    "source": "windows-x64-report.json",
+    "sha256": "2cbe013566700b00de8abcb0476c6fe440e967fa9f01b3c86a4e54b211bf8310",
+    "candidate": "23cff499d1b6c349dc5d7b60ebc25e70a6c467fb",
+    "platform": "win32",
+    "arch": "x64",
+    "total": 20,
+    "passed": 20,
+    "failed": 0,
+    "checks": [
+      {
+        "name": "startup: the real main process booted and a renderer finished loading with the preload bridge",
+        "ok": true
+      },
+      {
+        "name": "isolation: appData and userData really resolve inside the harness directory",
+        "ok": true
+      },
+      {
+        "name": "isolation: the channel put userData on its own profile",
+        "ok": true
+      },
+      {
+        "name": "disclosure: writes the app makes under $HOME, by metadata only (never the CLI bridge token)",
+        "ok": true
+      },
+      {
+        "name": "platform record: hotkey mode info",
+        "ok": true
+      },
+      {
+        "name": "Electron ABI: better-sqlite3 returned a real query result (array) from inside Electron",
+        "ok": true
+      },
+      {
+        "name": "baseline: main reports its committed rows",
+        "ok": true
+      },
+      {
+        "name": "apply: four rows with per-row cleanup modes registered natively",
+        "ok": true
+      },
+      {
+        "name": "apply: every row kept its own key AND its own mode, in order",
+        "ok": true
+      },
+      {
+        "name": "portability: the stored profile keeps the original spelling, not this platform's canonical form",
+        "ok": true
+      },
+      {
+        "name": "refusal: an unregistrable key is refused and the working rows survive untouched",
+        "ok": true
+      },
+      {
+        "name": "the global cleanup preference was never written by any of this",
+        "ok": true
+      },
+      {
+        "name": "shutdown: the app exited after SIGTERM without needing SIGKILL (a signal exit, not a proven graceful app.quit teardown)",
+        "ok": true
+      },
+      {
+        "name": "shutdown: the debugging port can be bound again, so nothing still holds it",
+        "ok": true
+      },
+      {
+        "name": "shutdown: an OS process snapshot shows no electron process left under the candidate path",
+        "ok": true
+      },
+      {
+        "name": "restart: every row came back with both its key and its cleanup mode",
+        "ok": true
+      },
+      {
+        "name": "restart: the second instance exited after SIGTERM without needing SIGKILL (signal exit, not proven graceful teardown)",
+        "ok": true
+      },
+      {
+        "name": "restart: the second debugging port can be bound again",
+        "ok": true
+      },
+      {
+        "name": "restart: an OS process snapshot shows no electron process left under the candidate path",
+        "ok": true
+      },
+      {
+        "name": "cleanup: direct children exited, both ports bind again, launcher removed, and the process snapshot is clean",
+        "ok": true
+      }
+    ]
+  }
+]

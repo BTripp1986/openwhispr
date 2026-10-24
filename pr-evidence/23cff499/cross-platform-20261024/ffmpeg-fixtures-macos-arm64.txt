@@ -1,0 +1,21 @@
+# app under test:   23cff499d1b6c349dc5d7b60ebc25e70a6c467fb
+# workflow commit:  0ef5249ee2955b70ff2dda557d54f7dd060feaea
+# runner label:     macos-15 (macos-arm64)
+# platform/arch:    darwin/arm64
+# runner node:      v24.20.0
+✔ merges independent WebM recorder segments into one decodable timeline (103.115417ms)
+✔ the fixture matrix covers every picker extension the providers do not take natively (0.912791ms)
+✔ provider-native containers upload as-is with their real content type (2.531167ms)
+✔ every other picker extension is re-encoded to a mono MP3 the providers accept (1094.169792ms)
+✔ a video container keeps only its audio track (66.990916ms)
+✔ a file ffmpeg cannot decode fails loudly instead of reaching the provider (10.833625ms)
+✔ cancelling before the transcode starts rejects with an AbortError (14.002667ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1576.124333
+SUITE_EXIT=0

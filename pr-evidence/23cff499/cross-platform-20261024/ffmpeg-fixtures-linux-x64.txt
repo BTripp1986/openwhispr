@@ -1,0 +1,21 @@
+# app under test:   23cff499d1b6c349dc5d7b60ebc25e70a6c467fb
+# workflow commit:  0ef5249ee2955b70ff2dda557d54f7dd060feaea
+# runner label:     ubuntu-latest (linux-x64)
+# platform/arch:    linux/x64
+# runner node:      v24.21.0
+✔ merges independent WebM recorder segments into one decodable timeline (52.290458ms)
+✔ the fixture matrix covers every picker extension the providers do not take natively (1.409817ms)
+✔ provider-native containers upload as-is with their real content type (2.122242ms)
+✔ every other picker extension is re-encoded to a mono MP3 the providers accept (527.338693ms)
+✔ a video container keeps only its audio track (35.182771ms)
+✔ a file ffmpeg cannot decode fails loudly instead of reaching the provider (4.019387ms)
+✔ cancelling before the transcode starts rejects with an AbortError (5.274729ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 801.99608
+SUITE_EXIT=0
