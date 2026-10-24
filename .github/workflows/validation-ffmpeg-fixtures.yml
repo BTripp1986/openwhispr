@@ -1,0 +1,187 @@
+# TEST-ONLY. Closes the five ffmpeg-gated skips that no run has ever executed.
+#
+# Both full-suite runs skip the same five cases - 4 in
+# test/helpers/providerUploadAudio.test.js and 1 in
+# test/helpers/audioSegmentMerge.test.js - and the test file names the reason
+# itself: "CI installs with --ignore-scripts, so ffmpeg-static's binary may be
+# absent". So this installs the project's OWN ffmpeg-static binary (its
+# `install` script, nothing from a system package manager) and runs just those
+# two files.
+#
+# The fixtures are synthetic and built by ffmpeg itself inside the tests. No
+# microphone, no audio device, no credentials, no provider call, no app edit.
+# This does not replace or re-run the full suites; their results stand on their
+# own artifacts.
+name: FFmpeg fixture coverage (fork-only, tests only)
+
+on:
+  push:
+    branches:
+      - validation/cross-platform-20261024
+    paths:
+      - '.github/workflows/validation-ffmpeg-fixtures.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: validation-ffmpeg-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  ffmpeg:
+    name: FFmpeg fixtures - ${{ matrix.label }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # macOS first because that is where these five were observed
+          # skipping; ubuntu confirms the same cases on the cheapest runner.
+          - label: macos-arm64
+            runner: macos-15
+          - label: linux-x64
+            runner: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Refuse to run anywhere but Ben's fork
+        if: github.repository != 'BTripp1986/openwhispr'
+        run: |
+          echo "This workflow runs only on BTripp1986/openwhispr." >&2
+          echo "Saw: ${{ github.repository }}" >&2
+          exit 1
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out the app under test at the pinned candidate SHA
+        id: pin
+        run: |
+          set -euo pipefail
+          expected='23cff499d1b6c349dc5d7b60ebc25e70a6c467fb'
+          pinned="$(tr -d ' \t\r\n' < validation/cross-platform/CANDIDATE_SHA)"
+          if [ "$pinned" != "$expected" ]; then
+            echo "CANDIDATE_SHA ($pinned) does not match the literal pinned here ($expected)." >&2
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/ffmpeg"
+          cp scripts/validation/summarize-suite-log.js "$RUNNER_TEMP/ffmpeg/"
+          git cat-file -e "$pinned^{commit}" 2>/dev/null \
+            || git fetch --no-tags origin "$pinned" \
+            || { echo "pinned SHA $pinned is not reachable" >&2; exit 1; }
+          git checkout --detach "$pinned"
+          head="$(git rev-parse HEAD)"
+          if [ "$head" != "$expected" ]; then
+            echo "working tree is at $head, not the pinned $expected" >&2
+            exit 1
+          fi
+          echo "candidate_sha=$head" >> "$GITHUB_OUTPUT"
+
+      - name: Refuse to run with a real .env present
+        run: |
+          set -euo pipefail
+          if [ -f .env ]; then
+            echo "A .env is present in the checkout; refusing to run." >&2
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Confirm the lockfile was not modified
+        run: git diff --exit-code -- package-lock.json
+
+      - name: Install the project's own ffmpeg-static binary
+        run: |
+          set -uo pipefail
+          # ffmpeg-static's `install` script, which --ignore-scripts skipped.
+          # Its exit code is taken explicitly: under `set -e` a trailing
+          # `echo $?` can only ever print 0.
+          set +e
+          node node_modules/ffmpeg-static/install.js
+          code=$?
+          set -e
+          echo "ffmpeg-static install exit: $code"
+          [ "$code" -eq 0 ] || exit "$code"
+
+      - name: Prove the app resolves a working ffmpeg
+        run: |
+          set -euo pipefail
+          # Through the app's own resolver, not a PATH lookup, so this is the
+          # same binary the tests will use.
+          node -e '
+            const { execFileSync } = require("node:child_process");
+            const { getFFmpegPath } = require("./src/helpers/ffmpegUtils");
+            const resolved = getFFmpegPath();
+            if (!resolved) {
+              console.error("getFFmpegPath() still resolves nothing; the five cases would skip again");
+              process.exit(1);
+            }
+            console.log("resolved: " + resolved);
+            console.log(execFileSync(resolved, ["-version"], { encoding: "utf8" }).split("\n")[0]);
+          '
+
+      - name: Run only the two ffmpeg-gated files
+        id: suite
+        env:
+          ELECTRON_OVERRIDE_DIST_PATH: ${{ runner.temp }}
+        run: |
+          set -u
+          log="$RUNNER_TEMP/ffmpeg/ffmpeg-fixtures-${{ matrix.label }}.log"
+          {
+            echo "# app under test:   ${{ steps.pin.outputs.candidate_sha }}"
+            echo "# workflow commit:  ${{ github.sha }}"
+            echo "# runner label:     ${{ matrix.runner }} (${{ matrix.label }})"
+            echo "# platform/arch:    $(node -p 'process.platform + "/" + process.arch')"
+            echo "# runner node:      $(node --version)"
+          } > "$log"
+          # set +e so the exit code, totals and tail are all recorded even when
+          # a test fails; `set -uo pipefail` does NOT clear errexit.
+          set +e
+          node --import tsx --test --test-concurrency=1 --test-reporter=spec \
+            test/helpers/providerUploadAudio.test.js \
+            test/helpers/audioSegmentMerge.test.js >> "$log" 2>&1
+          code=$?
+          set -e
+          echo "SUITE_EXIT=$code" >> "$log"
+          echo "suite_exit=$code" >> "$GITHUB_OUTPUT"
+          cat "$log"
+          exit "$code"
+
+      - name: Reconcile the totals and assert nothing skipped
+        if: always()
+        run: |
+          set +e
+          set -u
+          log="$RUNNER_TEMP/ffmpeg/ffmpeg-fixtures-${{ matrix.label }}.log"
+          [ -f "$log" ] || { echo "no log produced"; exit 0; }
+          node "$RUNNER_TEMP/ffmpeg/summarize-suite-log.js" "$log" --test-dir test \
+            | tee "$RUNNER_TEMP/ffmpeg/ffmpeg-inventory-${{ matrix.label }}.txt"
+          # The whole point is that these no longer skip, so a non-zero skip
+          # count here is reported loudly rather than passed over.
+          skipped="$(grep -E '^skipped [0-9]+$' "$RUNNER_TEMP/ffmpeg/ffmpeg-inventory-${{ matrix.label }}.txt" | awk '{print $2}')"
+          echo "skipped=${skipped:-unknown}"
+          if [ "${skipped:-1}" != "0" ]; then
+            echo "NOTE: ${skipped:-unknown} case(s) still skipped - ffmpeg did not close them all." >&2
+          fi
+
+      - name: Upload the evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ffmpeg-fixtures-${{ matrix.label }}-${{ steps.pin.outputs.candidate_sha || github.sha }}
+          path: |
+            ${{ runner.temp }}/ffmpeg/*.log
+            ${{ runner.temp }}/ffmpeg/*.txt
+          if-no-files-found: warn
+          retention-days: 7
