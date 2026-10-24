@@ -1,0 +1,133 @@
+{
+  "driver_exit": 0,
+  "pass": 12,
+  "fail": 0,
+  "results": [
+    {
+      "name": "rows at start",
+      "ok": null,
+      "detail": [
+        [
+          "F19",
+          "cleaned"
+        ]
+      ]
+    },
+    {
+      "name": "the key-list commit registered both rows",
+      "ok": true,
+      "detail": {
+        "rows": [
+          [
+            "F19",
+            "cleaned"
+          ],
+          [
+            "F22",
+            null
+          ]
+        ],
+        "bound": [
+          "F19",
+          "F21",
+          "F22"
+        ]
+      }
+    },
+    {
+      "name": "rows are exactly F19=cleaned, F22=app setting",
+      "ok": true,
+      "detail": [
+        [
+          "F19",
+          "cleaned"
+        ],
+        [
+          "F22",
+          null
+        ]
+      ]
+    },
+    {
+      "name": "a Remove control exists for each row",
+      "ok": true,
+      "detail": 2
+    },
+    {
+      "name": "the removed row is gone from the committed rows",
+      "ok": true,
+      "detail": [
+        [
+          "F19",
+          "cleaned"
+        ]
+      ]
+    },
+    {
+      "name": "removing a row releases exactly that row's bind, and keeps the other",
+      "ok": true,
+      "detail": {
+        "beforeRemove": [
+          "F19",
+          "F21",
+          "F22"
+        ],
+        "afterRemove": [
+          "F19",
+          "F21"
+        ]
+      }
+    },
+    {
+      "name": "final effective profile rows",
+      "ok": null,
+      "detail": [
+        [
+          "F19",
+          "cleaned"
+        ]
+      ]
+    },
+    {
+      "name": "clean exit through app.quit(), code 0, no forced kill",
+      "ok": true,
+      "detail": {
+        "requested": true,
+        "exited": {
+          "code": 0,
+          "signal": null,
+          "at": "2026-10-24T14:54:45.604Z"
+        }
+      }
+    },
+    {
+      "name": "teardown: full bind identity back to baseline",
+      "ok": true,
+      "detail": {
+        "added": [],
+        "removed": [],
+        "same": true
+      }
+    },
+    {
+      "name": "teardown: the user's ~/.config/hypr byte-identical",
+      "ok": true
+    },
+    {
+      "name": "teardown: no process from this run survives",
+      "ok": true
+    },
+    {
+      "name": "teardown: com.openwhispr.App off the session bus",
+      "ok": true
+    },
+    {
+      "name": "teardown: devtools port released",
+      "ok": true
+    },
+    {
+      "name": "teardown: $HOME/.openwhispr absent, as found",
+      "ok": true
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+candidate:  23cff499d1b6c349dc5d7b60ebc25e70a6c467fb
+runner:     macos-15-intel
+node:       v24.19.0   (the failing suite ran v24.19.0)
+arch:       darwin/x64
+cpus:       4
+sw_vers:    15.7.9 24G830

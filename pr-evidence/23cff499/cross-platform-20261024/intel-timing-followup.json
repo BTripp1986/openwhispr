@@ -1,0 +1,76 @@
+{
+  "candidate_sha": "23cff499d1b6c349dc5d7b60ebc25e70a6c467fb",
+  "run": "https://github.com/BTripp1986/openwhispr/actions/runs/40105950863",
+  "workflow_sha": "1a9a67074cfd84ae4a9448ca4d72da8cf5d91100",
+  "platform": "macOS15.7.9 / darwin/x64 / Node24.19.0",
+  "native_text_monitor": "compiled by Swift, compiler exit0, executable required",
+  "scope": "Unchanged failing test file, repeated five times. Node module import override is not Electron runtime. No TCC changes.",
+  "repeats": [
+    {
+      "iteration": 1,
+      "totals": {
+        "tests": 20,
+        "pass": 20,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "exit": 0,
+      "previously_failing_case_ms": 1660.943216
+    },
+    {
+      "iteration": 2,
+      "totals": {
+        "tests": 20,
+        "pass": 20,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "exit": 0,
+      "previously_failing_case_ms": 1639.947809
+    },
+    {
+      "iteration": 3,
+      "totals": {
+        "tests": 20,
+        "pass": 20,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "exit": 0,
+      "previously_failing_case_ms": 1443.462276
+    },
+    {
+      "iteration": 4,
+      "totals": {
+        "tests": 20,
+        "pass": 20,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "exit": 0,
+      "previously_failing_case_ms": 1415.38923
+    },
+    {
+      "iteration": 5,
+      "totals": {
+        "tests": 20,
+        "pass": 20,
+        "fail": 0,
+        "cancelled": 0,
+        "skipped": 0,
+        "todo": 0
+      },
+      "exit": 0,
+      "previously_failing_case_ms": 1612.836054
+    }
+  ],
+  "interpretation": "Original failure not reproduced in these repeats. Original full suite remains failed; cause and product correctness are not established."
+}

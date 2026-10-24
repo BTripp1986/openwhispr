@@ -1,0 +1,14 @@
+platform:        darwin/x64
+node:            v24.19.0
+timeout per leg: 1500 ms
+resolveBinary(): {"command":"/Users/runner/work/openwhispr/openwhispr/resources/bin/macos-text-monitor","args":[]}
+the native leg WILL run, so both legs can time out in sequence
+
+run 1: total=2846.4ms native_leg=1513.5ms est_remainder_after_a_comparable_native_leg=~1333.0ms (ESTIMATE, not a measured osascript duration) under_3000=true result={"state":"unavailable"} native_outcome=killed by its own timeout
+run 2: total=1514.7ms native_leg=1508.1ms est_remainder_after_a_comparable_native_leg=~6.6ms (ESTIMATE, not a measured osascript duration) under_3000=true result={"state":"unavailable"} native_outcome=killed by its own timeout
+run 3: total=1551.4ms native_leg=1390.8ms est_remainder_after_a_comparable_native_leg=~160.7ms (ESTIMATE, not a measured osascript duration) under_3000=true result={"state":"unavailable"} native_outcome=error 1
+run 4: total=1657.4ms native_leg=1392.1ms est_remainder_after_a_comparable_native_leg=~265.2ms (ESTIMATE, not a measured osascript duration) under_3000=true result={"state":"unavailable"} native_outcome=error 1
+run 5: total=1410.7ms native_leg=1366.3ms est_remainder_after_a_comparable_native_leg=~44.4ms (ESTIMATE, not a measured osascript duration) under_3000=true result={"state":"unavailable"} native_outcome=error 1
+
+min=1410.7ms median=1551.4ms max=2846.4ms runs_at_or_over_3000=0/5
+BUDGET_3000_EXCEEDED=0
