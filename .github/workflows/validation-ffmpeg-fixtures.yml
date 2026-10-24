@@ -115,6 +115,13 @@ jobs:
           [ "$code" -eq 0 ] || exit "$code"
 
       - name: Prove the app resolves a working ffmpeg
+        env:
+          # ffmpegUtils transitively requires `electron`, whose index.js throws
+          # "Electron failed to install correctly" when its binary is absent -
+          # and `npm ci --ignore-scripts` leaves it absent. The suite step
+          # already set this; the resolver step needs it too. Nothing here
+          # runs Electron.
+          ELECTRON_OVERRIDE_DIST_PATH: ${{ runner.temp }}
         run: |
           set -euo pipefail
           # Through the app's own resolver, not a PATH lookup, so this is the
@@ -158,21 +165,43 @@ jobs:
           cat "$log"
           exit "$code"
 
-      - name: Reconcile the totals and assert nothing skipped
+      - name: Reconcile the totals and require that nothing skipped
         if: always()
         run: |
-          set +e
-          set -u
+          set -uo pipefail
+          # This step previously only PRINTED a note, so it reported success
+          # even when no suite had run at all - which is exactly what happened
+          # on run 40103974883. It now fails on every one of those paths: a
+          # missing log, a summarizer that could not reconcile, an unreadable
+          # skip count, or any skip remaining.
           log="$RUNNER_TEMP/ffmpeg/ffmpeg-fixtures-${{ matrix.label }}.log"
-          [ -f "$log" ] || { echo "no log produced"; exit 0; }
+          inventory="$RUNNER_TEMP/ffmpeg/ffmpeg-inventory-${{ matrix.label }}.txt"
+          if [ ! -f "$log" ]; then
+            echo "no suite log was produced, so there is nothing to reconcile" >&2
+            exit 1
+          fi
+          # Not piped into tee: that would make $? report tee, not the
+          # summarizer, whose non-zero exit means the totals did not reconcile
+          # or the log had no summary block at all.
+          set +e
           node "$RUNNER_TEMP/ffmpeg/summarize-suite-log.js" "$log" --test-dir test \
-            | tee "$RUNNER_TEMP/ffmpeg/ffmpeg-inventory-${{ matrix.label }}.txt"
-          # The whole point is that these no longer skip, so a non-zero skip
-          # count here is reported loudly rather than passed over.
-          skipped="$(grep -E '^skipped [0-9]+$' "$RUNNER_TEMP/ffmpeg/ffmpeg-inventory-${{ matrix.label }}.txt" | awk '{print $2}')"
-          echo "skipped=${skipped:-unknown}"
-          if [ "${skipped:-1}" != "0" ]; then
-            echo "NOTE: ${skipped:-unknown} case(s) still skipped - ffmpeg did not close them all." >&2
+            > "$inventory" 2>&1
+          summarizer=$?
+          set -e
+          cat "$inventory"
+          if [ "$summarizer" -ne 0 ]; then
+            echo "the summarizer exited $summarizer; totals did not reconcile" >&2
+            exit 1
+          fi
+          skipped="$(awk '/^skipped [0-9]+$/ { print $2 }' "$inventory")"
+          if [ -z "$skipped" ]; then
+            echo "could not read a skip count from the inventory" >&2
+            exit 1
+          fi
+          echo "skipped=$skipped"
+          if [ "$skipped" -ne 0 ]; then
+            echo "$skipped case(s) still skipped: ffmpeg did not close them all" >&2
+            exit 1
           fi
 
       - name: Upload the evidence
