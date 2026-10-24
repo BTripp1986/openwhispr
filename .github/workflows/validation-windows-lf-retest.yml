@@ -71,7 +71,11 @@ jobs:
           fi
           mkdir -p "$RUNNER_TEMP/lf"
           cp scripts/validation/summarize-suite-log.js "$RUNNER_TEMP/lf/"
-          cp validation/cross-platform/windows-lf/FAILED_FILES "$RUNNER_TEMP/lf/"
+          # Stripped of CR as it is staged: this file is itself checked out
+          # with CRLF on Windows, and a trailing CR would reach node as part of
+          # the filename.
+          tr -d '\r' < validation/cross-platform/windows-lf/FAILED_FILES \
+            > "$RUNNER_TEMP/lf/FAILED_FILES"
           git cat-file -e "$pinned^{commit}" 2>/dev/null \
             || git fetch --no-tags origin "$pinned" \
             || { echo "pinned SHA $pinned is not reachable" >&2; exit 1; }
@@ -132,18 +136,26 @@ jobs:
       - name: Restore the two sliced files to the candidate's exact committed bytes
         run: |
           set -euo pipefail
-          git config core.autocrlf false
-          git config core.eol lf
+          # No core.autocrlf / core.eol change: `git cat-file blob` emits the
+          # committed bytes exactly, whatever the checkout filter says. Setting
+          # autocrlf=false here would also break the lockfile diagnostic below,
+          # because package-lock.json would still be CRLF in the working tree
+          # while git compared it raw against an LF blob.
           # ONE variable changes: the bytes of the only two files whose TEXT
           # the failing tests read and slice. They are written straight from
           # the candidate's own blobs, so no checkout filter can touch them,
           # and the result is byte-identical to the commit under test.
           #
           # Everything else is left exactly as actions/checkout produced it
-          # for the failing run, CRLF included. That is deliberate: a test
-          # file is parsed as JavaScript, where CRLF is harmless, so leaving
-          # them untouched keeps this a single-variable experiment and any
-          # failure that persists cannot be blamed on line endings here.
+          # for the failing run, CRLF included, so this stays a
+          # single-variable experiment. Those files therefore still DIFFER
+          # from their blobs, which is recorded rather than glossed over.
+          #
+          # What that does NOT license: other tests read other files as text
+          # (an Insights test matches a component source with a regex, for
+          # one), so restoring these two sources isolates ONLY these two.
+          # A failure that persists is therefore UNDIAGNOSED, not "proven
+          # unrelated to line endings" - it needs its own demonstration.
           for f in main.js src/helpers/hotkeyManager.js; do
             git cat-file blob "HEAD:$f" > "$f"
             echo "restored from blob: $f"
@@ -187,6 +199,17 @@ jobs:
           echo "git status --porcelain lines: $(git status --porcelain | wc -l)"
           git status --porcelain | head -5 || true
           echo "HEAD: $(git rev-parse HEAD)"
+          # Stated explicitly: every file NOT restored above is still as
+          # checked out, i.e. CRLF and differing from its blob. This run makes
+          # no byte claim about them.
+          echo "--- files under test that were NOT normalized (still CRLF) ---"
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            work="$(sha256sum "$f" | cut -d' ' -f1)"
+            blob="$(git cat-file blob "HEAD:$f" | sha256sum | cut -d' ' -f1)"
+            if [ "$work" = "$blob" ]; then state="matches blob"; else state="DIFFERS from blob (as checked out)"; fi
+            echo "    $f: $state"
+          done < <(grep -vE '^[[:space:]]*#|^[[:space:]]*$' "$RUNNER_TEMP/lf/FAILED_FILES")
 
       - name: Refuse to run with a real .env present
         run: |
@@ -217,7 +240,7 @@ jobs:
           db.close();
           NODE
 
-      - name: Re-run every file that failed, with LF bytes
+      - name: Re-run every file that failed, with the two sources restored
         id: suite
         env:
           ELECTRON_OVERRIDE_DIST_PATH: ${{ runner.temp }}
@@ -225,7 +248,16 @@ jobs:
         run: |
           set -u
           log="$RUNNER_TEMP/lf/windows-lf-retest.log"
-          mapfile -t files < <(grep -vE '^\s*#|^\s*$' "$RUNNER_TEMP/lf/FAILED_FILES")
+          # tr again at the point of use: a CR here would become part of the
+          # filename node receives.
+          mapfile -t files < <(tr -d '\r' < "$RUNNER_TEMP/lf/FAILED_FILES" \
+            | grep -vE '^[[:space:]]*#|^[[:space:]]*$')
+          for f in "${files[@]}"; do
+            if [ ! -f "$f" ]; then
+              echo "listed file does not exist: [$f]" >&2
+              exit 1
+            fi
+          done
           {
             echo "# app under test:   ${{ steps.pin.outputs.candidate_sha }}"
             echo "# workflow commit:  ${{ github.sha }}"
