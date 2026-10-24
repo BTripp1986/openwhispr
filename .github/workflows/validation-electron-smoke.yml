@@ -1,0 +1,229 @@
+# TEST-ONLY native Electron smoke for the dictation-cleanup-hotkeys candidate.
+# Sibling of validation-cross-platform.yml; separate file and separate `paths`
+# filter so adding it cannot re-run that workflow's heavy native matrix.
+#
+# This is the one job in lane B that exercises an Electron runtime, so it is
+# also the only place an Electron-ABI statement may be made. The native suite
+# job rebuilds better-sqlite3 for the runner's NODE; this job runs the
+# project's own `electron-builder install-app-deps` postinstall, which builds
+# it for ELECTRON, and then proves it by reading through the app's own database
+# IPC from inside the running app.
+#
+# It drives the real main process, real preload and the built renderer through
+# the app's OWN preload bridge (`window.electronAPI`) over CDP. It records
+# nothing, opens no microphone and calls no provider.
+#
+# Omissions, stated so they cannot be read as covered:
+#   * it presses no key. Registration through Electron's globalShortcut is NOT
+#     OS keyboard activation, and no hosted runner can deliver a keypress.
+#   * this job does NOT compile or probe the platform key-listener helpers
+#     (windows-key-listener.exe, macos-globe-listener, the fast-paste and
+#     text-monitor helpers). Nothing in it is evidence about push-to-talk
+#     key-down/key-up, the macOS Globe key, or native paste. Those are compiled
+#     and probed in validation-cross-platform.yml, and `supportsPushToTalk`
+#     reported here will say the key listener is unavailable precisely because
+#     this job never built it - that is a harness omission, not a platform
+#     finding.
+name: Electron smoke (fork-only, test-only)
+
+on:
+  push:
+    branches:
+      - validation/cross-platform-20261024
+    paths:
+      - '.github/workflows/validation-electron-smoke.yml'
+      - 'validation/cross-platform/smoke/**'
+  workflow_dispatch:
+
+concurrency:
+  group: validation-electron-smoke-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Electron smoke - ${{ matrix.label }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: windows-x64
+            runner: windows-2025
+          - label: macos-arm64
+            runner: macos-15
+          - label: macos-x64
+            runner: macos-15-intel
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Refuse to run anywhere but Ben's fork
+        if: github.repository != 'BTripp1986/openwhispr'
+        run: |
+          echo "This workflow runs only on BTripp1986/openwhispr." >&2
+          echo "Saw: ${{ github.repository }}" >&2
+          exit 1
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out the app under test at the pinned candidate SHA
+        id: pin
+        run: |
+          set -euo pipefail
+          expected='23cff499d1b6c349dc5d7b60ebc25e70a6c467fb'
+          pinned="$(tr -d ' \t\r\n' < validation/cross-platform/CANDIDATE_SHA)"
+          if [ "$pinned" != "$expected" ]; then
+            echo "CANDIDATE_SHA ($pinned) does not match the literal pinned in this workflow ($expected)." >&2
+            exit 1
+          fi
+          # The harness lives on this validation branch, not in the candidate
+          # tree. Copy it out BEFORE detaching.
+          mkdir -p "$RUNNER_TEMP/smoke"
+          cp validation/cross-platform/smoke/* "$RUNNER_TEMP/smoke/"
+          git cat-file -e "$pinned^{commit}" 2>/dev/null \
+            || git fetch --no-tags origin "$pinned" \
+            || { echo "pinned SHA $pinned is not reachable in this repository" >&2; exit 1; }
+          git checkout --detach "$pinned"
+          head="$(git rev-parse HEAD)"
+          if [ "$head" != "$expected" ]; then
+            echo "working tree is at $head, not the pinned $expected" >&2
+            exit 1
+          fi
+          echo "candidate_sha=$head" >> "$GITHUB_OUTPUT"
+
+      - name: Refuse to run with a real .env present
+        run: |
+          set -euo pipefail
+          if [ -f .env ]; then
+            echo "A .env is present in the checkout; refusing to run." >&2
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Confirm the lockfile was not modified
+        run: git diff --exit-code -- package-lock.json
+
+      - name: Fetch Electron's own binary
+        run: |
+          set -uo pipefail
+          # `npm ci --ignore-scripts` skipped electron's postinstall, so run it
+          # on its own. Its exit code is captured explicitly: under `set -e` a
+          # trailing `echo $?` can only ever print 0, and piping the installer
+          # into `tail` would make $? report tail instead of the installer.
+          set +e
+          node node_modules/electron/install.js
+          code=$?
+          set -e
+          echo "installer exit: $code"
+          [ "$code" -eq 0 ] || exit "$code"
+
+      - name: Prove the Electron binary is usable
+        id: electron
+        run: |
+          set -euo pipefail
+          # Direct evidence rather than trust in an installer's exit code.
+          # `--version` needs no display, so it works before any app launch.
+          bin="$(node -p 'require("electron")')"
+          echo "binary: $bin"
+          ls -l "$bin"
+          version="$("$bin" --version)"
+          echo "electron_version=$version" >> "$GITHUB_OUTPUT"
+          echo "electron --version => $version"
+
+      - name: Build native modules for ELECTRON's ABI
+        run: |
+          set -euo pipefail
+          # The project's own postinstall. This is the Electron ABI; the native
+          # suite job's better-sqlite3 check was the Node ABI and neither
+          # substitutes for the other.
+          npx --no-install electron-builder install-app-deps
+          echo "--- what node itself now thinks of better-sqlite3 ---"
+          # Expected to FAIL once the module is built for Electron: a module
+          # that still loads under plain node would mean install-app-deps did
+          # not rebuild it. Either way the outcome is recorded, not masked.
+          set +e
+          node -e 'new (require("better-sqlite3"))(":memory:").close(); console.log("loads under node too")'
+          echo "node_load_exit=$?"
+          set -e
+
+      - name: Build the renderer
+        run: npm run build:renderer
+
+      - name: Confirm the candidate's tracked tree is still unchanged
+        run: |
+          set -euo pipefail
+          git diff --exit-code
+          echo "tracked tree clean at $(git rev-parse HEAD)"
+
+      - name: Run the Electron smoke
+        id: smoke
+        run: |
+          set -u
+          out="$RUNNER_TEMP/smoke-out"
+          mkdir -p "$out"
+          set +e
+          node "$RUNNER_TEMP/smoke/electron-smoke.js" \
+            --repo "$PWD" --out "$out" --port 9333 \
+            > "$out/electron-smoke-driver.log" 2>&1
+          code=$?
+          set -e
+          echo "smoke_exit=$code" >> "$GITHUB_OUTPUT"
+          cat "$out/electron-smoke-driver.log"
+          exit "$code"
+
+      - name: Confirm the harness left nothing behind
+        if: always()
+        run: |
+          set -euo pipefail
+          # The launcher is copied to the repo root so Electron resolves
+          # app.getAppPath() there, and the driver deletes it again. Neither it
+          # nor anything else may be left in the candidate tree.
+          if [ -e xplat-electron-launcher.cjs ]; then
+            echo "the harness launcher was left in the candidate tree" >&2
+            exit 1
+          fi
+          git diff --exit-code
+          echo "candidate tree clean at $(git rev-parse HEAD)"
+          git status --porcelain
+
+      - name: Write the run summary
+        if: always()
+        run: |
+          set +e
+          set -u
+          {
+            echo "## Electron smoke - ${{ matrix.label }} (${{ matrix.runner }})"
+            echo
+            echo "App under test: \`${{ steps.pin.outputs.candidate_sha }}\`"
+            echo "Electron: \`${{ steps.electron.outputs.electron_version || 'not resolved' }}\`"
+            echo "Driver exit: \`${{ steps.smoke.outputs.smoke_exit || 'did not run' }}\`"
+            echo
+            echo '```'
+            grep -E '^(PASS|FAIL|SMOKE_)' "$RUNNER_TEMP/smoke-out/electron-smoke-driver.log" 2>/dev/null \
+              || echo "no check lines were produced"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: electron-smoke-${{ matrix.label }}-${{ steps.pin.outputs.candidate_sha || github.sha }}
+          path: |
+            ${{ runner.temp }}/smoke-out/*.log
+            ${{ runner.temp }}/smoke-out/*.json
+          if-no-files-found: warn
+          retention-days: 7
