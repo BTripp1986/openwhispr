@@ -1,0 +1,276 @@
+# TEST-ONLY, Windows only. Classifies each of the 45 native-Windows failures
+# as line-ending-dependent or not.
+#
+# The native Windows full suite FAILED at the candidate (run 40101084868:
+# 8922 tests, 8806 pass, 45 fail, 70 skip, 1 todo, SUITE_EXIT=1). That verdict
+# stands and is NOT replaced by this run.
+#
+# 21 of those 45 are confirmed by source inspection to come from slicing a
+# function out of main.js with LF-only delimiters:
+#   test/helpers/dictationRowsStartup.test.js:19
+#     main.slice(start, main.indexOf("\n}\n", start) + 3)     -> 7 failures
+#   test/helpers/hotkeyStartup.test.js:140
+#     main.slice(start, main.indexOf("\n}\n", recheck) + 3)   -> 14 failures
+# `.gitattributes` sets no `eol`/`text` rule for these paths, so a Windows
+# checkout follows core.autocrlf (true on GitHub runners) and the working-tree
+# bytes are CRLF. `indexOf("\n}\n")` then returns -1, slice() yields an empty
+# string, and the sliced function is never defined.
+#
+# This re-materializes the SAME pinned commit with LF bytes using git's
+# checkout configuration only - it edits no app source and no test - then
+# re-runs every failed file and reports per file whether LF resolves it.
+# Residual failures are reported as residual, never masked.
+name: Windows LF re-test (fork-only, tests only)
+
+on:
+  push:
+    branches:
+      - validation/cross-platform-20261024
+    paths:
+      - '.github/workflows/validation-windows-lf-retest.yml'
+      - 'validation/cross-platform/windows-lf/FAILED_FILES'
+  workflow_dispatch:
+
+concurrency:
+  group: validation-windows-lf-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  retest:
+    name: Windows LF re-test of the failed files
+    runs-on: windows-2025
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Refuse to run anywhere but Ben's fork
+        if: github.repository != 'BTripp1986/openwhispr'
+        run: |
+          echo "This workflow runs only on BTripp1986/openwhispr." >&2
+          echo "Saw: ${{ github.repository }}" >&2
+          exit 1
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out the app under test at the pinned candidate SHA
+        id: pin
+        run: |
+          set -euo pipefail
+          expected='23cff499d1b6c349dc5d7b60ebc25e70a6c467fb'
+          pinned="$(tr -d ' \t\r\n' < validation/cross-platform/CANDIDATE_SHA)"
+          if [ "$pinned" != "$expected" ]; then
+            echo "CANDIDATE_SHA ($pinned) does not match the literal pinned here ($expected)." >&2
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/lf"
+          cp scripts/validation/summarize-suite-log.js "$RUNNER_TEMP/lf/"
+          cp validation/cross-platform/windows-lf/FAILED_FILES "$RUNNER_TEMP/lf/"
+          git cat-file -e "$pinned^{commit}" 2>/dev/null \
+            || git fetch --no-tags origin "$pinned" \
+            || { echo "pinned SHA $pinned is not reachable" >&2; exit 1; }
+          git checkout --detach "$pinned"
+          head="$(git rev-parse HEAD)"
+          if [ "$head" != "$expected" ]; then
+            echo "working tree is at $head, not the pinned $expected" >&2
+            exit 1
+          fi
+          echo "candidate_sha=$head" >> "$GITHUB_OUTPUT"
+
+      - name: Record the ORIGINAL checkout's line-ending configuration and bytes
+        run: |
+          set -uo pipefail
+          out="$RUNNER_TEMP/lf/original-checkout.txt"
+          {
+            echo "# the checkout as actions/checkout left it, BEFORE any change"
+            echo "core.autocrlf: $(git config --get core.autocrlf || echo '(unset)')"
+            echo "core.eol:      $(git config --get core.eol || echo '(unset)')"
+            echo "gitattributes rules for the sliced files:"
+            git check-attr text eol -- main.js \
+              test/helpers/dictationRowsStartup.test.js \
+              test/helpers/hotkeyStartup.test.js
+            echo
+            echo "# working-tree bytes vs the candidate's blob bytes"
+            for f in main.js src/helpers/hotkeyManager.js \
+                     test/helpers/dictationRowsStartup.test.js \
+                     test/helpers/hotkeyStartup.test.js; do
+              work="$(sha256sum "$f" | cut -d' ' -f1)"
+              blob="$(git cat-file blob "HEAD:$f" | sha256sum | cut -d' ' -f1)"
+              crlf="$(grep -c $'\r$' "$f" || true)"
+              echo "$f"
+              echo "    working sha256: $work"
+              echo "    blob    sha256: $blob"
+              echo "    CRLF lines:     $crlf"
+              if [ "$work" = "$blob" ]; then echo "    bytes: IDENTICAL to blob"; else echo "    bytes: DIFFER from blob (line endings were translated)"; fi
+            done
+            echo
+            echo "# the mechanism itself, measured rather than asserted:"
+            # grep cannot match across lines, so the delimiter is checked in
+            # the bytes directly, and the slice the tests perform is measured.
+            node -e '
+              const fs = require("node:fs");
+              const main = fs.readFileSync("main.js", "utf8");
+              const report = (label, needle) =>
+                console.log(`    ${label}: present=${main.includes(needle)} indexOf=${main.indexOf(needle)}`);
+              report("LF   \\n}\\n", "\n}\n");
+              report("CRLF \\r\\n}\\r\\n", "\r\n}\r\n");
+              for (const name of ["function restoreDictationRows() {", "async function checkStartupHold() {"]) {
+                const start = main.indexOf(name);
+                const end = main.indexOf("\n}\n", start);
+                const sliced = start === -1 ? "" : main.slice(start, end + 3);
+                console.log(`    slice for ${JSON.stringify(name)}: start=${start} end=${end} length=${sliced.length}`);
+              }
+            '
+          } | tee "$out"
+
+      - name: Re-materialize the SAME commit with LF bytes (no file is edited)
+        run: |
+          set -euo pipefail
+          # git configuration only: no app source and no test is modified. The
+          # index still describes the pinned commit, so re-extracting from it
+          # writes the candidate's own blob bytes verbatim.
+          git config core.autocrlf false
+          git config core.eol lf
+          git ls-files -z | xargs -0 rm -f
+          git checkout-index --all --force
+          echo "re-materialized at $(git rev-parse HEAD)"
+
+      - name: Prove the working tree now holds the candidate's exact bytes
+        run: |
+          set -euo pipefail
+          # Nothing may differ from the pinned commit.
+          git diff --exit-code
+          status="$(git status --porcelain)"
+          if [ -n "$status" ]; then
+            echo "working tree is not clean after re-materializing:" >&2
+            echo "$status" >&2
+            exit 1
+          fi
+          # And every file the re-test depends on must be byte-identical to its
+          # blob, which `git diff` alone would not prove under a CRLF filter.
+          fail=0
+          while IFS= read -r f; do
+            [ -n "$f" ] || continue
+            work="$(sha256sum "$f" | cut -d' ' -f1)"
+            blob="$(git cat-file blob "HEAD:$f" | sha256sum | cut -d' ' -f1)"
+            if [ "$work" != "$blob" ]; then
+              echo "BYTES DIFFER from the candidate blob: $f ($work != $blob)" >&2
+              fail=1
+            fi
+          done <<EOF
+          main.js
+          src/helpers/hotkeyManager.js
+          $(grep -vE '^\s*#|^\s*$' "$RUNNER_TEMP/lf/FAILED_FILES")
+          EOF
+          [ "$fail" -eq 0 ] || exit 1
+          echo "every file under test is byte-identical to the candidate's blob"
+          git rev-parse HEAD
+
+      - name: Refuse to run with a real .env present
+        run: |
+          set -euo pipefail
+          if [ -f .env ]; then
+            echo "A .env is present in the checkout; refusing to run." >&2
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Confirm the lockfile was not modified
+        run: git diff --exit-code -- package-lock.json
+
+      - name: Build better-sqlite3 for the runner's node and open it
+        run: |
+          set -euo pipefail
+          npm rebuild better-sqlite3
+          node <<'NODE'
+          const Database = require("better-sqlite3");
+          const db = new Database(":memory:");
+          console.log(`better-sqlite3 opened on ${process.platform}/${process.arch} (NODE ABI)`);
+          db.close();
+          NODE
+
+      - name: Re-run every file that failed, with LF bytes
+        id: suite
+        env:
+          ELECTRON_OVERRIDE_DIST_PATH: ${{ runner.temp }}
+          REQUIRE_DB_TESTS: "1"
+        run: |
+          set -u
+          log="$RUNNER_TEMP/lf/windows-lf-retest.log"
+          mapfile -t files < <(grep -vE '^\s*#|^\s*$' "$RUNNER_TEMP/lf/FAILED_FILES")
+          {
+            echo "# app under test:   ${{ steps.pin.outputs.candidate_sha }}"
+            echo "# workflow commit:  ${{ github.sha }}"
+            echo "# runner:           windows-2025, LF working-tree bytes"
+            echo "# platform/arch:    $(node -p 'process.platform + "/" + process.arch')"
+            echo "# runner node:      $(node --version)"
+            echo "# files re-run:     ${#files[@]}"
+          } > "$log"
+          set +e
+          node --import tsx --test --test-concurrency=1 --test-reporter=spec \
+            "${files[@]}" >> "$log" 2>&1
+          code=$?
+          set -e
+          echo "SUITE_EXIT=$code" >> "$log"
+          echo "suite_exit=$code" >> "$GITHUB_OUTPUT"
+          tail -250 "$log"
+
+      - name: Reconcile and report what LF did and did not resolve
+        if: always()
+        run: |
+          set -uo pipefail
+          log="$RUNNER_TEMP/lf/windows-lf-retest.log"
+          if [ ! -f "$log" ]; then
+            echo "no log was produced" >&2
+            exit 1
+          fi
+          inventory="$RUNNER_TEMP/lf/windows-lf-inventory.txt"
+          set +e
+          node "$RUNNER_TEMP/lf/summarize-suite-log.js" "$log" --test-dir test \
+            > "$inventory" 2>&1
+          summarizer=$?
+          set -e
+          sed -n '1,14p' "$inventory"
+          if [ "$summarizer" -ne 0 ]; then
+            echo "the summarizer exited $summarizer; totals did not reconcile" >&2
+          fi
+          # Residual failures are the point of the run, so they are listed
+          # rather than summarised away. This step never substitutes its own
+          # verdict for the suite's.
+          {
+            echo "## Windows LF re-test"
+            echo
+            echo "Original full-suite verdict at this candidate stays FAILED (45 of 8922)."
+            echo
+            echo '```'
+            sed -n '1,12p' "$inventory"
+            echo '```'
+            echo
+            echo "Residual failing tests after LF re-materialization:"
+            echo '```'
+            grep -E '^✖' "$log" | sed -n '1,60p' || echo "(none)"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: windows-lf-retest-${{ steps.pin.outputs.candidate_sha || github.sha }}
+          path: |
+            ${{ runner.temp }}/lf/*.log
+            ${{ runner.temp }}/lf/*.txt
+          if-no-files-found: warn
+          retention-days: 7

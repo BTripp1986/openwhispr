@@ -1,0 +1,27 @@
+# Every test file that FAILED in the native Windows full suite, job
+# "Native suite - windows-x64" of run 40101084868 at candidate 23cff499
+# (8922 tests, 8806 pass, 45 fail, 70 skip, 1 todo, SUITE_EXIT=1).
+#
+# All 20 are re-run with LF working-tree bytes so each failure is classified
+# INDIVIDUALLY as line-ending-dependent or not. The full-suite verdict stays
+# FAILED regardless of what this run shows.
+test/components/leaderboardNavigation.test.js
+test/helpers/calendarDatabase.test.js
+test/helpers/cosmicToplevel.test.js
+test/helpers/dictationRowsStartup.test.js
+test/helpers/extractArchive.test.js
+test/helpers/granolaImportIpc.test.js
+test/helpers/hotkeyStartup.test.js
+test/helpers/linuxAutostart.test.js
+test/helpers/linuxKeyManager.test.js
+test/helpers/linuxUrlSchemeHandler.test.js
+test/helpers/localContextBudgetIpc.test.js
+test/helpers/meetingNotificationIpc.test.js
+test/helpers/orukeetDictationIpc.test.js
+test/helpers/parakeetDeploymentTarget.test.js
+test/helpers/permissionGuideManager.test.js
+test/helpers/providerConnectionIpc.test.js
+test/helpers/streamingStartAudioIpc.test.js
+test/helpers/systemTar.test.js
+test/helpers/whisperGpuFailureRecordIpc.test.js
+test/helpers/windowManagerAssistantPanel.test.js
