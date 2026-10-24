@@ -1,0 +1,23 @@
+{
+  "run": "40101084868",
+  "job": "120893187952",
+  "candidate_sha": "23cff499d1b6c349dc5d7b60ebc25e70a6c467fb",
+  "platform": "darwin/x64",
+  "os": "macOS 15.7.9",
+  "node": "24.19.0",
+  "totals": {
+    "tests": 8926,
+    "pass": 8887,
+    "fail": 1,
+    "skip": 37,
+    "todo": 1,
+    "exit": 1
+  },
+  "failure": {
+    "test": "test/helpers/textEditMonitorSelection.test.js:29",
+    "assertion": "line 33: Date.now() - start < 3000",
+    "duration_ms": 3023.677558,
+    "returned_state": "unavailable; state assertion passed",
+    "classification": "Timing threshold failure; targeted follow-up pending. No TCC or product-correctness conclusion inferred."
+  }
+}

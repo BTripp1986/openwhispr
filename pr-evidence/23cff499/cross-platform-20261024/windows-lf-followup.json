@@ -1,0 +1,250 @@
+{
+  "run": "40105197085",
+  "workflow_sha": "c34bab80287a7349597acea2d16e99f0ce66cc08",
+  "app_sha": "23cff499d1b6c349dc5d7b60ebc25e70a6c467fb",
+  "changed_bytes": "Only main.js and src/helpers/hotkeyManager.js restored to exact committed blobs; no source logic/test edits. Other checked-out files remain CRLF.",
+  "totals": {
+    "tests": 250,
+    "pass": 228,
+    "fail": 22,
+    "skip": 0,
+    "todo": 0,
+    "exit": 1
+  },
+  "resolved_original_failures": [
+    {
+      "location": "test/helpers/dictationRowsStartup.test.js:40:1",
+      "test": "a stored configuration restores every row with its own mode (2.2953ms)",
+      "signature": "restoreDictationRows ReferenceError"
+    },
+    {
+      "location": "test/helpers/dictationRowsStartup.test.js:56:1",
+      "test": "the spelling the user typed survives the round trip (0.8821ms)",
+      "signature": "restoreDictationRows ReferenceError"
+    },
+    {
+      "location": "test/helpers/dictationRowsStartup.test.js:66:1",
+      "test": "a profile with no configuration loads its keys on the app setting (0.8853ms)",
+      "signature": "restoreDictationRows ReferenceError"
+    },
+    {
+      "location": "test/helpers/dictationRowsStartup.test.js:80:1",
+      "test": "a hand-written configuration is read as JSON, not only as base64 (0.7799ms)",
+      "signature": "restoreDictationRows ReferenceError"
+    },
+    {
+      "location": "test/helpers/dictationRowsStartup.test.js:90:1",
+      "test": "a malformed configuration falls back to the keys rather than failing launch (0.857ms)",
+      "signature": "restoreDictationRows ReferenceError"
+    },
+    {
+      "location": "test/helpers/dictationRowsStartup.test.js:100:1",
+      "test": "a storage layer that throws leaves every row on the app setting (0.891ms)",
+      "signature": "restoreDictationRows ReferenceError"
+    },
+    {
+      "location": "test/helpers/dictationRowsStartup.test.js:113:1",
+      "test": "the base64 form the commit writes reads back identically (0.8546ms)",
+      "signature": "restoreDictationRows ReferenceError"
+    },
+    {
+      "location": "test/helpers/hotkeyStartup.test.js:181:5",
+      "test": "Hyprland startup keeps a saved Hold for saved Scrolllock (8.2523ms)",
+      "signature": "checkStartupHold ReferenceError"
+    },
+    {
+      "location": "test/helpers/hotkeyStartup.test.js:181:5",
+      "test": "Hyprland startup keeps a saved Hold for saved Control+Shift+Space (2.4585ms)",
+      "signature": "checkStartupHold ReferenceError"
+    },
+    {
+      "location": "test/helpers/hotkeyStartup.test.js:194:3",
+      "test": "Hyprland startup drops Hold before registering a modifier-only hotkey (2.541ms)",
+      "signature": "checkStartupHold ReferenceError"
+    },
+    {
+      "location": "test/helpers/hotkeyStartup.test.js:181:5",
+      "test": "GNOME startup keeps a saved Hold for saved Scrolllock (2.2776ms)",
+      "signature": "checkStartupHold ReferenceError"
+    },
+    {
+      "location": "test/helpers/hotkeyStartup.test.js:181:5",
+      "test": "GNOME startup keeps a saved Hold for saved Control+Shift+Space (1.9798ms)",
+      "signature": "checkStartupHold ReferenceError"
+    },
+    {
+      "location": "test/helpers/hotkeyStartup.test.js:194:3",
+      "test": "GNOME startup drops Hold before registering a modifier-only hotkey (2.1633ms)",
+      "signature": "checkStartupHold ReferenceError"
+    },
+    {
+      "location": "test/helpers/hotkeyStartup.test.js:181:5",
+      "test": "KDE startup keeps a saved Hold for saved Scrolllock (2.0957ms)",
+      "signature": "checkStartupHold ReferenceError"
+    },
+    {
+      "location": "test/helpers/hotkeyStartup.test.js:181:5",
+      "test": "KDE startup keeps a saved Hold for saved Control+Shift+Space (2.0477ms)",
+      "signature": "checkStartupHold ReferenceError"
+    },
+    {
+      "location": "test/helpers/hotkeyStartup.test.js:194:3",
+      "test": "KDE startup drops Hold before registering a modifier-only hotkey (2.0106ms)",
+      "signature": "checkStartupHold ReferenceError"
+    },
+    {
+      "location": "test/helpers/hotkeyStartup.test.js:209:1",
+      "test": "GNOME without the shortcuts portal drops Hold before its key registers (2.5469ms)",
+      "signature": "checkStartupHold ReferenceError"
+    },
+    {
+      "location": "test/helpers/hotkeyStartup.test.js:224:3",
+      "test": "GNOME drops Hold when its registration starts during the check (2.6667ms)",
+      "signature": "checkStartupHold ReferenceError"
+    },
+    {
+      "location": "test/helpers/hotkeyStartup.test.js:224:3",
+      "test": "Hyprland drops Hold when its registration starts during the check (2.1347ms)",
+      "signature": "other assertion / error"
+    },
+    {
+      "location": "test/helpers/hotkeyStartup.test.js:262:1",
+      "test": "KDE that cannot register falls back to globalShortcut and checks Hold again (2.6244ms)",
+      "signature": "checkStartupHold ReferenceError"
+    },
+    {
+      "location": "test/helpers/hotkeyStartup.test.js:277:1",
+      "test": "startup Tap fallback preserves the saved preference when registration fails (1.191ms)",
+      "signature": "checkStartupHold ReferenceError"
+    },
+    {
+      "location": "test/helpers/hotkeyStartup.test.js:299:1",
+      "test": "startup checks the registered hotkey when no desktop backend delays it (1.2083ms)",
+      "signature": "checkStartupHold ReferenceError"
+    },
+    {
+      "location": "test/helpers/hotkeyStartup.test.js:323:1",
+      "test": "startup checks Hold before the control panel opens and the hotkey registers (1.0639ms)",
+      "signature": "other assertion / error"
+    }
+  ],
+  "remaining_original_failures": [
+    {
+      "location": "test/components/leaderboardNavigation.test.js:8:1",
+      "test": "the leaderboard is tabbed inside the Insights view (3.2349ms)",
+      "signature": "other assertion / error"
+    },
+    {
+      "location": "test/helpers/calendarDatabase.test.js:649:1",
+      "test": "a declined all-day event keeps its Calendar.app copy out outside UTC (57.7453ms)",
+      "signature": "other assertion / error"
+    },
+    {
+      "location": "test/helpers/cosmicToplevel.test.js:91:1",
+      "test": "returns the activated toplevel's app id from a version 1 bind (5.9501ms)",
+      "signature": "EACCES listen"
+    },
+    {
+      "location": "test/helpers/cosmicToplevel.test.js:104:1",
+      "test": "returns null when the compositor has no COSMIC toplevel info (1.7236ms)",
+      "signature": "EACCES listen"
+    },
+    {
+      "location": "test/helpers/extractArchive.test.js:106:1",
+      "test": "extractArchive rejects on corrupt zip when both extraction methods fail (1628.3802ms)",
+      "signature": "other assertion / error"
+    },
+    {
+      "location": "test/helpers/granolaImportIpc.test.js:100:6",
+      "test": "D:\\a\\openwhispr\\openwhispr\\test\\helpers\\granolaImportIpc.test.js (101.5862ms)",
+      "signature": "EPERM cleanup"
+    },
+    {
+      "location": "test/helpers/linuxAutostart.test.js:171:1",
+      "test": "an icon the package already installed is referenced, not copied into the user theme (11.8363ms)",
+      "signature": "other assertion / error"
+    },
+    {
+      "location": "test/helpers/linuxKeyManager.test.js:237:1",
+      "test": "checkAvailability is available when a single event node is readable (4.7045ms)",
+      "signature": "other assertion / error"
+    },
+    {
+      "location": "test/helpers/linuxKeyManager.test.js:298:1",
+      "test": "checkAvailability finds a readable keyboard past a readable gamepad (1.4058ms)",
+      "signature": "other assertion / error"
+    },
+    {
+      "location": "test/helpers/linuxKeyManager.test.js:312:1",
+      "test": "checkAvailability trusts a readable node when sysfs cannot describe it (1.2489ms)",
+      "signature": "other assertion / error"
+    },
+    {
+      "location": "test/helpers/linuxUrlSchemeHandler.test.js:163:1",
+      "test": "a tar.gz points its handler at the launcher wrapper beside the binary (7.6082ms)",
+      "signature": "other assertion / error"
+    },
+    {
+      "location": "test/helpers/localContextBudgetIpc.test.js:102:1",
+      "test": "returns the ceiling and display name for a bundled model (3.6589ms)",
+      "signature": "other assertion / error"
+    },
+    {
+      "location": "test/helpers/meetingNotificationIpc.test.js:93:6",
+      "test": "D:\\a\\openwhispr\\openwhispr\\test\\helpers\\meetingNotificationIpc.test.js (103.2683ms)",
+      "signature": "EPERM cleanup"
+    },
+    {
+      "location": "test/helpers/orukeetDictationIpc.test.js:228:6",
+      "test": "D:\\a\\openwhispr\\openwhispr\\test\\helpers\\orukeetDictationIpc.test.js (103.7859ms)",
+      "signature": "EPERM cleanup"
+    },
+    {
+      "location": "test/helpers/parakeetDeploymentTarget.test.js:63:1",
+      "test": "validates the ONNX Runtime library the sherpa binaries load (1.7948ms)",
+      "signature": "other assertion / error"
+    },
+    {
+      "location": "test/helpers/permissionGuideManager.test.js:437:1",
+      "test": "actions reject stale steps and drag only the packaged application (2.5577ms)",
+      "signature": "other assertion / error"
+    },
+    {
+      "location": "test/helpers/providerConnectionIpc.test.js:104:6",
+      "test": "D:\\a\\openwhispr\\openwhispr\\test\\helpers\\providerConnectionIpc.test.js (102.5871ms)",
+      "signature": "EPERM cleanup"
+    },
+    {
+      "location": "test/helpers/streamingStartAudioIpc.test.js:140:6",
+      "test": "D:\\a\\openwhispr\\openwhispr\\test\\helpers\\streamingStartAudioIpc.test.js (102.6859ms)",
+      "signature": "EPERM cleanup"
+    },
+    {
+      "location": "test/helpers/systemTar.test.js:105:1",
+      "test": "kills and rejects a tar process that does not exit before the timeout (1016.2816ms)",
+      "signature": "other assertion / error"
+    },
+    {
+      "location": "test/helpers/systemTar.test.js:119:1",
+      "test": "rejects after the kill grace period when the killed process never closes (32.3763ms)",
+      "signature": "other assertion / error"
+    },
+    {
+      "location": "test/helpers/whisperGpuFailureRecordIpc.test.js:79:6",
+      "test": "D:\\a\\openwhispr\\openwhispr\\test\\helpers\\whisperGpuFailureRecordIpc.test.js (116.1694ms)",
+      "signature": "EPERM cleanup"
+    },
+    {
+      "location": "test/helpers/windowManagerAssistantPanel.test.js:243:1",
+      "test": "assistant panel links open in the browser, never an in-app window or a local file (1.7452ms)",
+      "signature": "other assertion / error"
+    }
+  ],
+  "new_failures": [],
+  "job_conclusion": "success (diagnostic collection only; tests exited 1)",
+  "byte_proof": {
+    "main.js": "d998a5b96862017d6af3ce942d3b4a07d2fc5a2e0891822cc4b7cc3aeb6a8a93",
+    "src/helpers/hotkeyManager.js": "264b01c8185a5756926984184dc5ca9a734a22769941f926d22547ddda625e40"
+  },
+  "byte_proof_note": "Runner SHA256s match pinned blobs; both local blobs have zero CRLF pairs. The workflow grep CRLF-line counter is unreliable and is not used as proof."
+}
