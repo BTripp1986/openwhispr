@@ -1,0 +1,449 @@
+# TEST-ONLY cross-platform native validation for the dictation-cleanup-hotkeys
+# candidate. Lives only on this validation branch.
+#
+# Why it exists. Every result the PR has so far came from Linux: a hosted
+# ubuntu full suite (run 39848701770, 8916 tests) plus live Hyprland checks.
+# On that platform 26 of the 37 skips are `process.platform` gates - 24 in the
+# textEditMonitor family and `macosPasteLayout` want darwin, `extractArchive`
+# wants win32 - so the darwin and win32 branches of those helpers have never
+# executed anywhere. This workflow runs the same suite on real Windows and real
+# macOS (both architectures) so those branches actually run, and compiles each
+# platform's own native helper sources with that platform's toolchain.
+#
+# What it deliberately is NOT:
+#   * not a build, sign, package, publish or release of anything;
+#   * not a provider or audio acceptance - no credentials exist here and no
+#     cloud inference is authorized for this pass;
+#   * not OS keyboard-activation evidence - a hosted runner has no physical
+#     keyboard, and macOS TCC is never disabled or forged.
+#
+# better-sqlite3 is rebuilt and opened against the runner's NODE, which is the
+# Node ABI and NOT the Electron ABI. Nothing here claims Electron native
+# coverage.
+name: Cross-platform native validation (fork-only, tests only)
+
+on:
+  push:
+    branches:
+      - validation/cross-platform-20261024
+    # Scoped so that adding a sibling validation workflow later cannot
+    # re-trigger this matrix and burn a second heavy run.
+    paths:
+      - '.github/workflows/validation-cross-platform.yml'
+      - 'validation/cross-platform/CANDIDATE_SHA'
+      - 'scripts/validation/summarize-suite-log.js'
+  workflow_dispatch:
+
+concurrency:
+  # Never discard a completed run's result.
+  group: validation-cross-platform-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    name: Native suite - ${{ matrix.label }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 150
+    strategy:
+      # One platform's failure must not cancel the evidence from the others.
+      fail-fast: false
+      matrix:
+        include:
+          - label: windows-x64
+            runner: windows-2025
+          - label: macos-arm64
+            runner: macos-15
+          - label: macos-x64
+            runner: macos-15-intel
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Refuse to run anywhere but Ben's fork
+        if: github.repository != 'BTripp1986/openwhispr'
+        run: |
+          echo "This workflow runs only on BTripp1986/openwhispr." >&2
+          echo "Saw: ${{ github.repository }}" >&2
+          exit 1
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out the app under test at the pinned candidate SHA
+        id: pin
+        run: |
+          set -euo pipefail
+          expected='23cff499d1b6c349dc5d7b60ebc25e70a6c467fb'
+          pinned="$(tr -d ' \t\r\n' < validation/cross-platform/CANDIDATE_SHA)"
+          if [ "$pinned" != "$expected" ]; then
+            echo "CANDIDATE_SHA ($pinned) does not match the literal pinned in this workflow ($expected)." >&2
+            echo "Both must change together, so a candidate change is always visible in the diff." >&2
+            exit 1
+          fi
+          # The log summarizer lives on this validation branch, not in the
+          # candidate tree. Copy it out BEFORE detaching so the app checkout is
+          # never written to.
+          mkdir -p "$RUNNER_TEMP/xplat"
+          cp scripts/validation/summarize-suite-log.js "$RUNNER_TEMP/xplat/summarize-suite-log.js"
+          git cat-file -e "$pinned^{commit}" 2>/dev/null \
+            || git fetch --no-tags origin "$pinned" \
+            || { echo "pinned SHA $pinned is not reachable in this repository" >&2; exit 1; }
+          git checkout --detach "$pinned"
+          head="$(git rev-parse HEAD)"
+          if [ "$head" != "$expected" ]; then
+            echo "working tree is at $head, not the pinned $expected" >&2
+            exit 1
+          fi
+          echo "candidate_sha=$head" >> "$GITHUB_OUTPUT"
+          echo "App under test: $head"
+
+      - name: Refuse to run with a real .env present
+        run: |
+          set -euo pipefail
+          if [ -f .env ]; then
+            echo "A .env is present in the checkout; refusing to run." >&2
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      - name: Record the actual platform
+        run: |
+          set -uo pipefail
+          out="$RUNNER_TEMP/xplat/platform.txt"
+          {
+            echo "candidate_sha:   ${{ steps.pin.outputs.candidate_sha }}"
+            echo "workflow_commit: ${{ github.sha }}"
+            echo "matrix_label:    ${{ matrix.label }}"
+            echo "runner_label:    ${{ matrix.runner }}"
+            echo "runner_os:       $RUNNER_OS"
+            echo "runner_arch:     $RUNNER_ARCH"
+            echo "node:            $(node --version)"
+            echo "npm:             $(npm --version)"
+            echo "node_arch:       $(node -p 'process.arch')"
+            echo "node_platform:   $(node -p 'process.platform')"
+            echo "cpus:            $(node -p 'require("os").cpus().length')"
+            echo "total_mem_gb:    $(node -p '(require("os").totalmem()/1073741824).toFixed(1)')"
+            echo "os_release:      $(node -p 'require("os").release()')"
+            echo "started:         $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            if [ "$RUNNER_OS" = "macOS" ]; then
+              echo "sw_vers:         $(sw_vers -productName) $(sw_vers -productVersion) $(sw_vers -buildVersion)"
+              echo "uname:           $(uname -a)"
+              echo "swiftc:          $(swiftc --version 2>&1 | head -1)"
+              echo "clang:           $(clang --version 2>&1 | head -1)"
+              echo "xcode:           $(xcodebuild -version 2>&1 | head -1)"
+            fi
+            if [ "$RUNNER_OS" = "Windows" ]; then
+              echo "os_caption:      $(cmd //c ver 2>&1 | tr -d '\r' | tr -s ' ')"
+            fi
+          } | tee "$out"
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Confirm the lockfile was not modified
+        run: git diff --exit-code -- package-lock.json
+
+      - name: Build better-sqlite3 for the runner's node and open it
+        run: |
+          set -euo pipefail
+          npm rebuild better-sqlite3
+          node <<'NODE'
+          // A bare require passes against a stale or absent binding; only
+          // opening a database proves the native ABI matches this node.
+          // This is the NODE ABI. It says nothing about the Electron ABI,
+          // which this workflow never builds for.
+          const Database = require("better-sqlite3");
+          const db = new Database(":memory:");
+          const { v } = db.prepare("select sqlite_version() as v").get();
+          console.log(`better-sqlite3 opened on ${process.platform}/${process.arch}, SQLite ${v}, node ${process.version} (NODE ABI, not Electron)`);
+          db.close();
+          NODE
+
+      - name: Compile this platform's native helpers (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          set -uo pipefail
+          log="$RUNNER_TEMP/xplat/native-compile.log"
+          : > "$log"
+          # Run the project's own compile scripts one at a time rather than the
+          # `compile:native` && chain, so one failure cannot hide the rest.
+          for target in compile:globe compile:fast-paste compile:text-monitor \
+                        compile:media-remote compile:mediaremote-adapter \
+                        compile:mic-listener compile:calendar-listener \
+                        compile:audio-tap compile:window-bounds; do
+            echo "=== $target ===" | tee -a "$log"
+            set +e
+            npm run --silent "$target" >> "$log" 2>&1
+            code=$?
+            set -e
+            echo "EXIT:$target=$code" | tee -a "$log"
+          done
+          tail -120 "$log"
+
+      - name: Compile this platform's native helpers (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          set -uo pipefail
+          # Written as a batch file rather than inlined so the MSVC setup is
+          # reviewable and this bash block stays checkable by
+          # scripts/validation/check-workflow-shell.js.
+          bat="$RUNNER_TEMP/xplat/native-compile.bat"
+          cat > "$bat" <<'BAT'
+          @echo off
+          set "VSWHERE=C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe"
+          if not exist "%VSWHERE%" goto nomsvc
+          for /f "usebackq tokens=*" %%i in (`"%VSWHERE%" -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath`) do set "VSPATH=%%i"
+          if not defined VSPATH goto nomsvc
+          call "%VSPATH%\VC\Auxiliary\Build\vcvars64.bat"
+          echo MSVC_ENV=ok
+          goto build
+          :nomsvc
+          echo MSVC_ENV=unavailable
+          :build
+          cl 2>&1 | findstr /i version
+          echo === compile:winkeys ===
+          call npm run --silent compile:winkeys
+          echo EXIT:compile:winkeys=%ERRORLEVEL%
+          echo === compile:winpaste ===
+          call npm run --silent compile:winpaste
+          echo EXIT:compile:winpaste=%ERRORLEVEL%
+          echo === compile:text-monitor ===
+          call npm run --silent compile:text-monitor
+          echo EXIT:compile:text-monitor=%ERRORLEVEL%
+          rem These two have no package script; their own CI workflows compile
+          rem them with exactly these command lines. Output goes to the runner
+          rem temp directory, so this check never writes into the app tree.
+          echo === cl windows-mic-listener ===
+          cl /O2 /nologo resources\windows-mic-listener.c /Fe:%RUNNER_TEMP%\xplat\windows-mic-listener.exe ole32.lib oleaut32.lib
+          echo EXIT:cl-mic-listener=%ERRORLEVEL%
+          echo === cl windows-system-audio-helper ===
+          cl /O2 /nologo resources\windows-system-audio-helper.c /Fe:%RUNNER_TEMP%\xplat\windows-system-audio-helper.exe ole32.lib mmdevapi.lib
+          echo EXIT:cl-system-audio=%ERRORLEVEL%
+          exit /b 0
+          BAT
+          # cmd.exe reads a batch file byte-wise and `goto` is unreliable in a
+          # file with bare LF line endings, so give it real CRLF.
+          awk '{ sub(/\r$/, ""); printf "%s\r\n", $0 }' "$bat" > "$bat.crlf"
+          mv "$bat.crlf" "$bat"
+          log="$RUNNER_TEMP/xplat/native-compile.log"
+          set +e
+          cmd //c "$bat" > "$log" 2>&1
+          echo "batch_exit=$?"
+          set -e
+          tr -d '\r' < "$log" > "$log.clean" && mv "$log.clean" "$log"
+          cat "$log"
+          # A build script that fell back to a prebuilt download has NOT proven
+          # local compilation, so say which happened rather than implying it.
+          if grep -qi 'downloaded prebuilt' "$log"; then
+            echo "NOTE: at least one helper came from a prebuilt download, not from local compilation."
+          fi
+
+      - name: Confirm the app source is still unchanged
+        run: |
+          set -euo pipefail
+          # resources/bin/ is gitignored, so compiled helpers land outside the
+          # tracked tree. Any tracked change here would mean a test mutated the
+          # candidate, which is not allowed.
+          git diff --exit-code
+          echo "tracked tree clean at $(git rev-parse HEAD)"
+
+      - name: Probe the compiled helpers (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          set -uo pipefail
+          log="$RUNNER_TEMP/xplat/helper-probes.log"
+          : > "$log"
+          probe() {
+            name="$1"; shift
+            bin="resources/bin/$name"
+            echo "=== $name $* ===" >> "$log"
+            if [ ! -x "$bin" ]; then
+              echo "RESULT:$name=missing" >> "$log"
+              return 0
+            fi
+            set +e
+            out="$("$bin" "$@" 2>&1)"
+            code=$?
+            set -e
+            # Captured BEFORE truncating: piping the binary into head would
+            # make $? report head's status and mask a non-zero exit.
+            printf '%s\n' "$out" | head -20 >> "$log"
+            echo "RESULT:$name=exit=$code" >> "$log"
+          }
+          # CoreGraphics window list only: documented as needing neither
+          # Accessibility nor Screen Recording, so this one should really work.
+          probe macos-window-bounds "$$"
+          probe macos-mic-listener --print-default-input
+          probe macos-globe-listener --globe-preference-state
+          # Accessibility-gated. A hosted runner grants no TCC, so a refusal
+          # here is the expected boundary, recorded rather than worked around.
+          probe macos-text-monitor --app-context "$$"
+          cat "$log"
+
+      - name: Probe the compiled helpers (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          set -uo pipefail
+          log="$RUNNER_TEMP/xplat/helper-probes.log"
+          : > "$log"
+          probe() {
+            bin="$1"; shift
+            echo "=== $(basename "$bin") $* ===" >> "$log"
+            if [ ! -f "$bin" ]; then
+              echo "RESULT:$(basename "$bin")=missing" >> "$log"
+              return 0
+            fi
+            set +e
+            out="$("$bin" "$@" 2>&1)"
+            code=$?
+            set -e
+            # Captured BEFORE the pipeline: tr/head would otherwise own $?.
+            printf '%s\n' "$out" | tr -d '\r' | head -20 >> "$log"
+            echo "RESULT:$(basename "$bin")=exit=$code" >> "$log"
+          }
+          probe resources/bin/windows-fast-paste.exe --capabilities
+          probe resources/bin/windows-fast-paste.exe --detect-only
+          probe resources/bin/windows-text-monitor.exe --probe-editable
+          probe "$RUNNER_TEMP/xplat/windows-system-audio-helper.exe" probe
+          # The key listener installs a real WH_KEYBOARD_LL hook and then blocks
+          # waiting for keys. Staying alive is the evidence that the hook
+          # installed on this OS; it is NOT evidence of a keypress, which a
+          # hosted runner cannot deliver.
+          listener=resources/bin/windows-key-listener.exe
+          echo "=== windows-key-listener.exe F8 (hook install only) ===" >> "$log"
+          if [ -f "$listener" ]; then
+            "$listener" F8 > "$RUNNER_TEMP/xplat/key-listener.out" 2>&1 &
+            pid=$!
+            sleep 5
+            if kill -0 "$pid" 2>/dev/null; then
+              echo "RESULT:windows-key-listener=alive-after-5s (hook installed, no keypress claimed)" >> "$log"
+              kill "$pid" 2>/dev/null || true
+            else
+              wait "$pid"; code=$?
+              echo "RESULT:windows-key-listener=exited-early exit=$code" >> "$log"
+            fi
+            tr -d '\r' < "$RUNNER_TEMP/xplat/key-listener.out" | head -10 >> "$log"
+          else
+            echo "RESULT:windows-key-listener=missing" >> "$log"
+          fi
+          cat "$log"
+
+      - name: Inventory the native binaries
+        if: always()
+        run: |
+          set -uo pipefail
+          out="$RUNNER_TEMP/xplat/native-binaries.txt"
+          {
+            echo "# resources/bin at $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            if [ -d resources/bin ]; then
+              ls -l resources/bin || true
+              echo "# sha256"
+              # Neither `xargs -r` (GNU) nor `shasum` (absent from Git Bash) is
+              # available on both runners, so hash one file at a time with
+              # whichever tool this platform has.
+              hasher=sha256sum
+              command -v sha256sum >/dev/null 2>&1 || hasher="shasum -a 256"
+              for f in resources/bin/*; do
+                [ -f "$f" ] || continue
+                $hasher "$f" 2>/dev/null || echo "unhashed $f"
+              done
+            else
+              echo "resources/bin does not exist"
+            fi
+          } | tee "$out"
+
+      - name: Run the full test suite natively
+        id: suite
+        env:
+          # Nothing here builds Electron; this only keeps the dist-path lookup
+          # from failing when electron's own postinstall was skipped.
+          ELECTRON_OVERRIDE_DIST_PATH: ${{ runner.temp }}
+          REQUIRE_DB_TESTS: "1"
+        run: |
+          set -u
+          log="$RUNNER_TEMP/xplat/fulltest-${{ matrix.label }}.log"
+          # The log pins itself: downloaded on its own it still says which
+          # commit, which workflow revision, which platform and which node
+          # produced it.
+          {
+            echo "# app under test:   ${{ steps.pin.outputs.candidate_sha }}"
+            echo "# workflow commit:  ${{ github.sha }}"
+            echo "# runner label:     ${{ matrix.runner }} (${{ matrix.label }})"
+            echo "# platform/arch:    $(node -p 'process.platform + "/" + process.arch')"
+            echo "# runner node:      $(node --version)"
+            echo "# started:          $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          } > "$log"
+          # Every `run:` block is `bash -eo pipefail`, so WITHOUT clearing
+          # errexit the first failing test would abort this step and the exit
+          # code, totals and tail below would never be recorded. `set -uo
+          # pipefail` does NOT clear errexit; only `set +e` does.
+          set +e
+          node --import tsx --test --test-concurrency=1 \
+            --test-reporter=spec \
+            "test/**/*.test.js" >> "$log" 2>&1
+          exit_code=$?
+          set -e
+          echo "SUITE_EXIT=$exit_code" >> "$log"
+          echo "suite_exit=$exit_code" >> "$GITHUB_OUTPUT"
+          tail -200 "$log"
+          exit "$exit_code"
+
+      - name: Reconcile totals and inventory every skip
+        if: always()
+        run: |
+          # Reporting only: it must never replace the suite's own verdict with
+          # a failure of its own.
+          set +e
+          set -u
+          log="$RUNNER_TEMP/xplat/fulltest-${{ matrix.label }}.log"
+          inventory="$RUNNER_TEMP/xplat/skip-todo-inventory-${{ matrix.label }}.txt"
+          if [ ! -f "$log" ]; then
+            echo "no suite log was produced" | tee "$inventory"
+            exit 0
+          fi
+          node "$RUNNER_TEMP/xplat/summarize-suite-log.js" "$log" --test-dir test \
+            > "$inventory" 2>&1
+          echo "summarizer_exit=$?"
+          cat "$inventory"
+
+      - name: Write the run summary
+        if: always()
+        run: |
+          set +e
+          set -u
+          inventory="$RUNNER_TEMP/xplat/skip-todo-inventory-${{ matrix.label }}.txt"
+          {
+            echo "## ${{ matrix.label }} (${{ matrix.runner }})"
+            echo
+            echo "App under test: \`${{ steps.pin.outputs.candidate_sha }}\`"
+            echo "Suite exit: \`${{ steps.suite.outputs.suite_exit || 'did not run' }}\`"
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/xplat/platform.txt" 2>/dev/null || echo "no platform record"
+            echo '```'
+            echo
+            if [ -f "$inventory" ]; then
+              echo '```'
+              sed -n '1,14p' "$inventory"
+              echo '```'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: xplat-${{ matrix.label }}-${{ steps.pin.outputs.candidate_sha || github.sha }}
+          path: |
+            ${{ runner.temp }}/xplat/*.log
+            ${{ runner.temp }}/xplat/*.txt
+          if-no-files-found: warn
+          retention-days: 7
