@@ -14,6 +14,12 @@
 // against a `< 3000` budget. This measures each leg so the margin is visible
 // rather than guessed at.
 //
+// The native leg is timed in its own separate invocation. That means the
+// per-run breakdown is an ESTIMATE: this script never measures the osascript
+// leg directly, because doing so would require the app's private script
+// constant and the source is frozen. Only `total` is a measurement of the
+// call the test makes.
+//
 // A fresh TextEditMonitor is used per run, exactly as the test does, because
 // the instance remembers pids whose native lookup failed
 // (_nativeSelectionUnsupportedPids) and would skip the native leg on a reuse.
@@ -76,14 +82,17 @@ async function main() {
     const result = await monitor.getSelectedText(PID, TIMEOUT_MS);
     const total = ms(started);
     totals.push(total);
-    // On a non-darwin host getSelectedText short-circuits before either leg,
-    // so the separately measured native leg is not part of `total` and a
-    // subtraction would print nonsense.
+    // ESTIMATE ONLY. The native leg above was timed in a SEPARATE
+    // invocation, not inside this call, so subtracting it does not measure
+    // the osascript leg - it only indicates roughly what was left after a
+    // comparable native leg. Measuring the osascript leg directly would mean
+    // reaching into the app's private script constant, and the source is
+    // frozen, so this stays an estimate and is labelled as one.
     const rest = native && total >= native.elapsed ? total - native.elapsed : null;
     console.log(
       `run ${run}: total=${total.toFixed(1)}ms` +
         ` native_leg=${native ? native.elapsed.toFixed(1) + "ms" : "n/a"}` +
-        ` remainder(osascript+overhead)=${rest === null ? "n/a (call did not include the native leg)" : rest.toFixed(1) + "ms"}` +
+        ` est_remainder_after_a_comparable_native_leg=${rest === null ? "n/a" : "~" + rest.toFixed(1) + "ms (ESTIMATE, not a measured osascript duration)"}` +
         ` under_3000=${total < 3000}` +
         ` result=${JSON.stringify(result)}` +
         (native ? ` native_outcome=${native.outcome}` : "")

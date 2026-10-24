@@ -88,7 +88,10 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version-file: .nvmrc
+          # Pinned explicitly to the version the failing Intel suite ran.
+          # .nvmrc says "24" and happened to resolve to the same patch; that
+          # is luck, not a control.
+          node-version: 24.19.0
 
       - name: Record the platform
         run: |
@@ -108,13 +111,24 @@ jobs:
       - name: Compile the macOS text monitor, as the failing run did
         run: |
           set -uo pipefail
-          # Without this the native leg would not exist and the measurement
-          # would not reproduce the failing run's conditions.
+          # This is a GATE, not a report. Without the native binary the
+          # measurement would silently characterise a one-leg call and would
+          # not reproduce the failing run at all, so a non-zero compiler exit
+          # or a missing executable fails the job here.
           set +e
           npm run --silent compile:text-monitor
-          echo "EXIT:compile:text-monitor=$?"
+          code=$?
           set -e
-          ls -l resources/bin/macos-text-monitor || echo "macos-text-monitor is ABSENT"
+          echo "EXIT:compile:text-monitor=$code"
+          if [ "$code" -ne 0 ]; then
+            echo "the text monitor did not compile (exit $code)" >&2
+            exit "$code"
+          fi
+          if [ ! -x resources/bin/macos-text-monitor ]; then
+            echo "resources/bin/macos-text-monitor is missing or not executable" >&2
+            exit 1
+          fi
+          ls -l resources/bin/macos-text-monitor
 
       - name: Measure each leg of getSelectedText
         env:
@@ -123,7 +137,10 @@ jobs:
           # and `npm ci --ignore-scripts` leaves it absent. The native suite
           # step set this, which is why the suite itself ran. I hit exactly
           # this in the ffmpeg job and should have carried it over here.
-          # Nothing in this job runs Electron.
+          #
+          # This satisfies a module IMPORT only. It is NOT an Electron runtime
+          # and nothing here may be read as Electron coverage: no Electron
+          # process is started by this job.
           ELECTRON_OVERRIDE_DIST_PATH: ${{ runner.temp }}
         run: |
           set -uo pipefail
