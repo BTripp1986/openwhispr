@@ -20,10 +20,10 @@
 #     (windows-key-listener.exe, macos-globe-listener, the fast-paste and
 #     text-monitor helpers). Nothing in it is evidence about push-to-talk
 #     key-down/key-up, the macOS Globe key, or native paste. Those are compiled
-#     and probed in validation-cross-platform.yml, and `supportsPushToTalk`
-#     reported here will say the key listener is unavailable precisely because
-#     this job never built it - that is a harness omission, not a platform
-#     finding.
+#     and probed in validation-cross-platform.yml. `supportsPushToTalk` in this
+#     job's record is platform METADATA, not evidence that Hold executes: the
+#     macOS runs reported it true with no helper compiled at all, so it must
+#     never be read as helper-presence or Hold-behaviour evidence.
 name: Electron smoke (fork-only, test-only)
 
 on:
@@ -43,20 +43,68 @@ permissions:
   contents: read
 
 jobs:
+  # Which platforms run is committed in
+  # validation/cross-platform/smoke/PLATFORMS, so a re-run can be scoped to
+  # one platform without discarding another platform's passing evidence, and
+  # the scope is visible in the diff. workflow_dispatch inputs cannot do this
+  # here: dispatch requires the workflow on the default branch, which this
+  # lane must not touch.
+  prepare:
+    name: Pick the platforms this push runs
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.pick.outputs.matrix }}
+    steps:
+      - name: Refuse to run anywhere but Ben's fork
+        if: github.repository != 'BTripp1986/openwhispr'
+        run: |
+          echo "This workflow runs only on BTripp1986/openwhispr." >&2
+          exit 1
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - id: pick
+        shell: bash
+        run: |
+          set -euo pipefail
+          node -e '
+            const fs = require("fs");
+            const ALL = {
+              "windows-x64": "windows-2025",
+              "macos-arm64": "macos-15",
+              "macos-x64": "macos-15-intel",
+            };
+            const wanted = fs
+              .readFileSync("validation/cross-platform/smoke/PLATFORMS", "utf8")
+              .split(/\r?\n/)
+              .map((line) => line.replace(/#.*$/, "").trim())
+              .filter(Boolean);
+            const unknown = wanted.filter((label) => !(label in ALL));
+            if (unknown.length) {
+              console.error("unknown platform labels: " + unknown.join(", "));
+              process.exit(1);
+            }
+            if (!wanted.length) {
+              console.error("PLATFORMS selects nothing");
+              process.exit(1);
+            }
+            const include = wanted.map((label) => ({ label, runner: ALL[label] }));
+            fs.appendFileSync(
+              process.env.GITHUB_OUTPUT,
+              "matrix=" + JSON.stringify({ include }) + "\n"
+            );
+            console.log("running: " + wanted.join(", "));
+          '
+
   smoke:
     name: Electron smoke - ${{ matrix.label }}
+    needs: prepare
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 75
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - label: windows-x64
-            runner: windows-2025
-          - label: macos-arm64
-            runner: macos-15
-          - label: macos-x64
-            runner: macos-15-intel
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
     defaults:
       run:
         shell: bash
@@ -133,13 +181,36 @@ jobs:
       - name: Prove the Electron binary is usable
         id: electron
         run: |
-          set -euo pipefail
+          set -uo pipefail
           # Direct evidence rather than trust in an installer's exit code.
           # `--version` needs no display, so it works before any app launch.
           bin="$(node -p 'require("electron")')"
           echo "binary: $bin"
           ls -l "$bin"
-          version="$("$bin" --version)"
+          set +e
+          raw="$("$bin" --version 2>&1)"
+          code=$?
+          set -e
+          # On Windows this output carries CR and a LEADING blank line. Command
+          # substitution strips only TRAILING newlines, so writing it straight
+          # into GITHUB_OUTPUT produced two lines and the runner rejected the
+          # second one ("Invalid format 'v41.10.7'"). Normalize to the first
+          # non-empty line with no CR and no surrounding space, then validate
+          # the shape before writing anything.
+          printf '%s' "$raw" | od -c | head -5
+          if [ "$code" -ne 0 ]; then
+            echo "electron --version failed with exit $code" >&2
+            exit "$code"
+          fi
+          version="$(printf '%s' "$raw" | tr -d '\r' | sed -n '/[^[:space:]]/{p;q;}' \
+            | tr -d '[:space:]')"
+          case "$version" in
+            v[0-9]*) ;;
+            *)
+              echo "unexpected --version output; refusing to write it: [$version]" >&2
+              exit 1
+              ;;
+          esac
           echo "electron_version=$version" >> "$GITHUB_OUTPUT"
           echo "electron --version => $version"
 

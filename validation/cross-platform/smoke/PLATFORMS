@@ -1,0 +1,5 @@
+# Which smoke platforms this push runs. One label per line; "#" comments.
+# Scoped deliberately: macos-arm64 and macos-x64 already passed 18/18 at
+# 7f7e4b2d (run 40102783079) and must NOT be re-run just for reporting.
+# Known labels: windows-x64, macos-arm64, macos-x64
+windows-x64

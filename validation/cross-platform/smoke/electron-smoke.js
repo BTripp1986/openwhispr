@@ -22,6 +22,7 @@
 
 const fs = require("node:fs");
 const path = require("node:path");
+const net = require("node:net");
 const os = require("node:os");
 const { spawn, execFileSync } = require("node:child_process");
 
@@ -288,12 +289,81 @@ function homeFootprint() {
   }
 }
 
-async function portClosed(port) {
+// Positive evidence that nothing holds the port: bind it. A failed CDP fetch
+// proves only that the endpoint did not answer - a hiccup, a refused
+// connection and a parse error all look identical - so it is recorded
+// alongside, never used as the assertion.
+function portFree(port) {
+  return new Promise((resolve) => {
+    const server = net.createServer();
+    server.once("error", (error) => resolve({ free: false, code: error.code }));
+    server.once("listening", () => server.close(() => resolve({ free: true, code: null })));
+    server.listen(port, "127.0.0.1");
+  });
+}
+
+async function cdpAnswers(port) {
   try {
     await listTargets(port);
-    return false;
-  } catch {
     return true;
+  } catch {
+    return false;
+  }
+}
+
+// Electron runs a process tree (renderer, GPU, utility), so the direct child's
+// exit says nothing about its descendants. This takes a real OS snapshot and
+// attributes by the candidate path, and reports "unavailable" rather than
+// implying an empty result when the snapshot itself cannot be taken.
+function processSnapshot(repo) {
+  // Match the ELECTRON BINARY path, not the repo path plus the word
+  // "electron": this driver's own argv contains both (`--repo <repo>` and
+  // `electron-smoke.js`), so a looser needle makes the driver match itself and
+  // report a leftover that does not exist. Its own pid is excluded too.
+  const needle = path.join(repo, "node_modules", "electron");
+  const notSelf = (pid) => pid !== process.pid;
+  try {
+    if (process.platform === "win32") {
+      const raw = execFileSync(
+        "powershell",
+        [
+          "-NoProfile",
+          "-NonInteractive",
+          "-Command",
+          "Get-CimInstance Win32_Process -Filter \"Name='electron.exe'\" |" +
+            " Select-Object ProcessId,ParentProcessId,CommandLine | ConvertTo-Json -Compress",
+        ],
+        { encoding: "utf8", timeout: 30000 }
+      ).trim();
+      if (!raw) return { available: true, matches: [] };
+      const parsed = JSON.parse(raw);
+      const rows = Array.isArray(parsed) ? parsed : [parsed];
+      return {
+        available: true,
+        matches: rows
+          .filter(
+            (r) => String(r.CommandLine ?? "").includes(needle) && notSelf(r.ProcessId)
+          )
+          .map((r) => ({ pid: r.ProcessId, ppid: r.ParentProcessId })),
+      };
+    }
+    const raw = execFileSync("ps", ["-Ao", "pid=,ppid=,command="], {
+      encoding: "utf8",
+      timeout: 30000,
+    });
+    return {
+      available: true,
+      matches: raw
+        .split("\n")
+        .filter((line) => line.includes(needle))
+        .map((line) => {
+          const m = /^\s*(\d+)\s+(\d+)\s+/.exec(line);
+          return { pid: m ? Number(m[1]) : null, ppid: m ? Number(m[2]) : null };
+        })
+        .filter((row) => notSelf(row.pid)),
+    };
+  } catch (error) {
+    return { available: false, error: error.message };
   }
 }
 
@@ -468,11 +538,24 @@ async function main() {
     session.ws.close();
     const firstExit = await first.stop();
     record(
-      "shutdown: the app really exited on SIGTERM without needing SIGKILL",
+      "shutdown: the app exited after SIGTERM without needing SIGKILL (a signal exit, not a proven graceful app.quit teardown)",
       firstExit.exited === true && firstExit.forced === false,
       JSON.stringify(firstExit)
     );
-    record("shutdown: the debugging port was released", await portClosed(port), `port ${port}`);
+    const firstPort = await portFree(port);
+    record(
+      "shutdown: the debugging port can be bound again, so nothing still holds it",
+      firstPort.free === true,
+      `port ${port} free=${firstPort.free}${firstPort.code ? ` (${firstPort.code})` : ""}; cdp still answers=${await cdpAnswers(port)}`
+    );
+    const afterFirst = processSnapshot(repo);
+    record(
+      afterFirst.available
+        ? "shutdown: an OS process snapshot shows no electron process left under the candidate path"
+        : "shutdown: process snapshot unavailable, so no claim is made about descendants",
+      afterFirst.available ? afterFirst.matches.length === 0 : true,
+      JSON.stringify(afterFirst)
+    );
 
     // ---- launch 2: persistence across a real restart --------------------
     second = launch({ repo, port: port + 1, appData });
@@ -487,14 +570,23 @@ async function main() {
     again.session.ws.close();
     const secondExit = await second.stop();
     record(
-      "restart: the second instance really exited without needing SIGKILL",
+      "restart: the second instance exited after SIGTERM without needing SIGKILL (signal exit, not proven graceful teardown)",
       secondExit.exited === true && secondExit.forced === false,
       JSON.stringify(secondExit)
     );
+    const secondPort = await portFree(port + 1);
     record(
-      "restart: the second debugging port was released",
-      await portClosed(port + 1),
-      `port ${port + 1}`
+      "restart: the second debugging port can be bound again",
+      secondPort.free === true,
+      `port ${port + 1} free=${secondPort.free}${secondPort.code ? ` (${secondPort.code})` : ""}`
+    );
+    const afterSecond = processSnapshot(repo);
+    record(
+      afterSecond.available
+        ? "restart: an OS process snapshot shows no electron process left under the candidate path"
+        : "restart: process snapshot unavailable, so no claim is made about descendants",
+      afterSecond.available ? afterSecond.matches.length === 0 : true,
+      JSON.stringify(afterSecond)
     );
   } catch (error) {
     fatal = error.stack || String(error);
@@ -510,18 +602,28 @@ async function main() {
       launcherRemoved: !fs.existsSync(path.join(repo, LAUNCHER)),
       first: firstFinal,
       second: secondFinal,
-      portsClosed: {
-        [port]: await portClosed(port),
-        [port + 1]: await portClosed(port + 1),
+      portsFree: {
+        [port]: await portFree(port),
+        [port + 1]: await portFree(port + 1),
       },
+      processSnapshot: processSnapshot(repo),
     };
     const leftovers =
       (firstFinal && firstFinal.exited !== true) ||
       (secondFinal && secondFinal.exited !== true) ||
       !report.cleanup.launcherRemoved ||
-      Object.values(report.cleanup.portsClosed).some((closed) => closed !== true);
-    record("cleanup: no child process, port or harness file left behind", !leftovers,
-      JSON.stringify(report.cleanup));
+      Object.values(report.cleanup.portsFree).some((p) => p.free !== true) ||
+      (report.cleanup.processSnapshot.available &&
+        report.cleanup.processSnapshot.matches.length > 0);
+    // Wording is exactly what the evidence supports: the direct children
+    // exited, both ports bind again, the launcher is gone, and an OS snapshot
+    // (when it could be taken) found no electron process under the candidate
+    // path. A snapshot that could not be taken makes no descendant claim.
+    record(
+      "cleanup: direct children exited, both ports bind again, launcher removed, and the process snapshot is clean",
+      !leftovers,
+      JSON.stringify(report.cleanup)
+    );
 
     const logs = [];
     if (first) logs.push(`===== launch 1 (pid ${first.pid}) =====\n${first.log()}`);
