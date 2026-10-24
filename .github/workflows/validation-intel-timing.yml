@@ -1,0 +1,174 @@
+# TEST-ONLY, macos-15-intel only. Explains ONE failure with measurements.
+#
+# The Intel full suite was 8926 tests / 8887 pass / 1 fail / 37 skip / 1 todo,
+# SUITE_EXIT=1. Its single failure is
+# test/helpers/textEditMonitorSelection.test.js:33, `Date.now() - start < 3000`
+# around getSelectedText(99999999, 1500), measured at 3023.677 ms. The
+# behavioural assertion immediately above it PASSED - getSelectedText did
+# return { state: "unavailable" } - and arm64 passed the same case.
+#
+# getSelectedText runs two legs SEQUENTIALLY with the SAME timeout: the native
+# `macos-text-monitor --selected-text <pid>` under execFile({timeout}), then
+# osascript. At timeoutMs=1500 that is ~3000 ms of timeouts plus two process
+# spawns against a `< 3000` budget. This job measures each leg and repeats the
+# real test, so the margin is a number rather than a guess.
+#
+# It changes no source, no assertion and no TCC state, labels nothing flaky,
+# and re-runs no suite. The native helper IS compiled first, so the native leg
+# exists exactly as it did in the failing run.
+name: Intel selection timing (fork-only, measurement only)
+
+on:
+  push:
+    branches:
+      - validation/cross-platform-20261024
+    paths:
+      - '.github/workflows/validation-intel-timing.yml'
+      - 'validation/cross-platform/intel-timing/**'
+  workflow_dispatch:
+
+concurrency:
+  group: validation-intel-timing-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  timing:
+    name: Intel selection timing
+    runs-on: macos-15-intel
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Refuse to run anywhere but Ben's fork
+        if: github.repository != 'BTripp1986/openwhispr'
+        run: |
+          echo "This workflow runs only on BTripp1986/openwhispr." >&2
+          echo "Saw: ${{ github.repository }}" >&2
+          exit 1
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out the app under test at the pinned candidate SHA
+        id: pin
+        run: |
+          set -euo pipefail
+          expected='23cff499d1b6c349dc5d7b60ebc25e70a6c467fb'
+          pinned="$(tr -d ' \t\r\n' < validation/cross-platform/CANDIDATE_SHA)"
+          if [ "$pinned" != "$expected" ]; then
+            echo "CANDIDATE_SHA ($pinned) does not match the literal pinned here ($expected)." >&2
+            exit 1
+          fi
+          mkdir -p "$RUNNER_TEMP/timing"
+          cp validation/cross-platform/intel-timing/measure-selected-text.js "$RUNNER_TEMP/timing/"
+          git cat-file -e "$pinned^{commit}" 2>/dev/null \
+            || git fetch --no-tags origin "$pinned" \
+            || { echo "pinned SHA $pinned is not reachable" >&2; exit 1; }
+          git checkout --detach "$pinned"
+          head="$(git rev-parse HEAD)"
+          if [ "$head" != "$expected" ]; then
+            echo "working tree is at $head, not the pinned $expected" >&2
+            exit 1
+          fi
+          echo "candidate_sha=$head" >> "$GITHUB_OUTPUT"
+
+      - name: Refuse to run with a real .env present
+        run: |
+          set -euo pipefail
+          if [ -f .env ]; then
+            echo "A .env is present in the checkout; refusing to run." >&2
+            exit 1
+          fi
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      - name: Record the platform
+        run: |
+          set -uo pipefail
+          {
+            echo "candidate:  ${{ steps.pin.outputs.candidate_sha }}"
+            echo "runner:     macos-15-intel"
+            echo "node:       $(node --version)   (the failing suite ran v24.19.0)"
+            echo "arch:       $(node -p 'process.platform + "/" + process.arch')"
+            echo "cpus:       $(node -p 'require("os").cpus().length')"
+            echo "sw_vers:    $(sw_vers -productVersion) $(sw_vers -buildVersion)"
+          } | tee "$RUNNER_TEMP/timing/platform.txt"
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Compile the macOS text monitor, as the failing run did
+        run: |
+          set -uo pipefail
+          # Without this the native leg would not exist and the measurement
+          # would not reproduce the failing run's conditions.
+          set +e
+          npm run --silent compile:text-monitor
+          echo "EXIT:compile:text-monitor=$?"
+          set -e
+          ls -l resources/bin/macos-text-monitor || echo "macos-text-monitor is ABSENT"
+
+      - name: Measure each leg of getSelectedText
+        run: |
+          set -uo pipefail
+          node "$RUNNER_TEMP/timing/measure-selected-text.js" "$PWD" 5 \
+            2>&1 | tee "$RUNNER_TEMP/timing/leg-measurements.txt"
+
+      - name: Re-run the failing file five times, assertion untouched
+        id: repeat
+        run: |
+          set -uo pipefail
+          out="$RUNNER_TEMP/timing/repeat.txt"
+          : > "$out"
+          fails=0
+          for i in 1 2 3 4 5; do
+            log="$RUNNER_TEMP/timing/repeat-$i.log"
+            set +e
+            node --import tsx --test --test-concurrency=1 --test-reporter=spec \
+              test/helpers/textEditMonitorSelection.test.js > "$log" 2>&1
+            code=$?
+            set -e
+            [ "$code" -eq 0 ] || fails=$((fails + 1))
+            line="$(grep -E 'getSelectedText returns unavailable for an inaccessible target' "$log" | head -1 | sed 's/^[[:space:]]*//')"
+            totals="$(grep -E '^(ℹ )?(tests|pass|fail) [0-9]+$' "$log" | tr '\n' ' ')"
+            echo "iteration $i: exit=$code | $line | $totals" | tee -a "$out"
+          done
+          echo "iterations_failed=$fails of 5" | tee -a "$out"
+          echo "iterations_failed=$fails" >> "$GITHUB_OUTPUT"
+
+      - name: Summarize
+        if: always()
+        run: |
+          set +e
+          set -u
+          {
+            echo "## Intel selection timing"
+            echo
+            echo "App under test: \`${{ steps.pin.outputs.candidate_sha }}\`"
+            echo "Iterations of the failing file that failed: \`${{ steps.repeat.outputs.iterations_failed || 'did not run' }}\` of 5"
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/timing/platform.txt" 2>/dev/null
+            echo
+            cat "$RUNNER_TEMP/timing/leg-measurements.txt" 2>/dev/null
+            echo
+            cat "$RUNNER_TEMP/timing/repeat.txt" 2>/dev/null
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: intel-timing-${{ steps.pin.outputs.candidate_sha || github.sha }}
+          path: ${{ runner.temp }}/timing/*
+          if-no-files-found: warn
+          retention-days: 7
