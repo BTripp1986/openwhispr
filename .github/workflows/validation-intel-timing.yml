@@ -117,6 +117,14 @@ jobs:
           ls -l resources/bin/macos-text-monitor || echo "macos-text-monitor is ABSENT"
 
       - name: Measure each leg of getSelectedText
+        env:
+          # textEditMonitor -> debugLogger -> `electron`, whose index.js throws
+          # "Electron failed to install correctly" when the binary is absent,
+          # and `npm ci --ignore-scripts` leaves it absent. The native suite
+          # step set this, which is why the suite itself ran. I hit exactly
+          # this in the ffmpeg job and should have carried it over here.
+          # Nothing in this job runs Electron.
+          ELECTRON_OVERRIDE_DIST_PATH: ${{ runner.temp }}
         run: |
           set -uo pipefail
           node "$RUNNER_TEMP/timing/measure-selected-text.js" "$PWD" 5 \
@@ -124,6 +132,9 @@ jobs:
 
       - name: Re-run the failing file five times, assertion untouched
         id: repeat
+        env:
+          ELECTRON_OVERRIDE_DIST_PATH: ${{ runner.temp }}
+          REQUIRE_DB_TESTS: "1"
         run: |
           set -uo pipefail
           out="$RUNNER_TEMP/timing/repeat.txt"
