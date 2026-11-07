@@ -1,0 +1,15 @@
+HEAD 9a804d10253573428aee95610a28a2ac7ba37384 (clean working tree)
+SOURCE src/components/SettingsPage.tsx 54174f65773821352b32bdf76c80dcd0e58e26d14b372193e469d762edebf40c
+SOURCE src/components/settings/DictationCleanupControl.tsx 20b82e4000560bd6747fe0fddc6d4e516f68bec878c8def97bca61d49cf79e0b
+SOURCE src/components/ui/HotkeyListInput.tsx e58397d33c9cca483395ba7662bd99664f7f932dd5582f81fe6971cbe3a72191
+SOURCE src/components/ui/HotkeyInput.tsx c688e4fb84460059fe70135678cdbd80355569a20e6d613068da62931b294aa8
+SOURCE src/stores/settingsStore.ts bcdbfbb9273a5488fcd6d37e7cfde1dd95d54e759146d4be4ee32c9d2135275d
+FONT /NotoSans-normal-latin-ext-Yer4Bbkz.woff2 {"status":"loaded","contentType":"font/woff2","magic":"wOF2","loadedFaces":1}
+wrote ui-1-default-collapsed.png
+wrote ui-2-two-rows-collapsed.png
+wrote ui-3-customization-open.png
+wrote ui-4-selector-open.png
+wrote ui-5-mode-chosen.png
+wrote ui-6-commit-unconfirmed.png
+wrote ui-7-commit-refused.png
+done
